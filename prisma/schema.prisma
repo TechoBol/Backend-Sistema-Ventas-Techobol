@@ -1,0 +1,262 @@
+// This is your Prisma schema file
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+//////////////////////
+// 🏢 UBICACIONES
+//////////////////////
+
+model Location {
+  id        Int          @id @default(autoincrement())
+  name      String
+  type      LocationType
+  address   String?
+  isVisible Boolean      @default(true)
+
+  abbreviation String?
+  saleCounter  Int?    @default(0)
+
+  employees   Employee[]
+  inventories Inventory[]
+  sales       Sale[]
+
+  fromMovements StockMovement[] @relation("FromLocation")
+  toMovements   StockMovement[] @relation("ToLocation")
+
+  fromTransfers Transfer[] @relation("FromTransfer")
+  toTransfers   Transfer[] @relation("ToTransfer")
+}
+
+enum LocationType {
+  WAREHOUSE
+  BRANCH
+}
+
+//////////////////////
+// 👤 EMPLEADOS
+//////////////////////
+
+model Employee {
+  id       Int     @id @default(autoincrement())
+  name     String
+  lastName String
+  email    String? @unique
+  password String?
+
+  role   Role @relation(fields: [roleId], references: [id])
+  roleId Int
+
+  location   Location? @relation(fields: [locationId], references: [id])
+  locationId Int?
+
+  sales Sale[]
+
+  isVisible Boolean @default(true)
+
+  requestedTransfers Transfer[] @relation("RequestedBy")
+  approvedTransfers  Transfer[] @relation("ApprovedBy")
+}
+
+model Role {
+  id                  Int        @id @default(autoincrement())
+  name                String
+  description         String?
+  employee            Employee[]
+  isVisible           Boolean    @default(true)
+  maxEmployeesAllowed Int        @default(1)
+  level               Int?
+}
+
+//////////////////////
+// 🏷️ CATEGORIZACIÓN
+//////////////////////
+
+model Line {
+  id          Int       @id @default(autoincrement())
+  name        String    @unique
+  description String?
+  brands      Json      @default("[]")
+  isVisible   Boolean   @default(true)
+  products    Product[]
+}
+
+//////////////////////
+// 📦 PRODUCTOS
+//////////////////////
+
+model Product {
+  id          Int     @id @default(autoincrement())
+  name        String
+  description String?
+  barcode     String  @unique
+  imageUrl    String?
+  price       Float
+  finalPrice  Float
+  isVisible   Boolean @default(true)
+
+  // --- Relación con Línea ---
+  line   Line? @relation(fields: [lineId], references: [id])
+  lineId Int?
+
+  // Nombre de la marca seleccionada (Texto simple)
+  brandName String?
+  // --------------------------
+
+  inventories   Inventory[]
+  movements     StockMovement[]
+  saleDetails   SaleDetail[]
+  transferItems TransferItem[]
+}
+
+//////////////////////
+// 📊 INVENTARIO
+//////////////////////
+
+model Inventory {
+  id Int @id @default(autoincrement())
+
+  product   Product @relation(fields: [productId], references: [id])
+  productId Int
+
+  location   Location @relation(fields: [locationId], references: [id])
+  locationId Int
+
+  quantity Int @default(0)
+
+  averageCost Float @default(0)
+
+  @@unique([productId, locationId])
+}
+
+//////////////////////
+// 🔄 MOVIMIENTOS
+//////////////////////
+
+model StockMovement {
+  id Int @id @default(autoincrement())
+
+  product   Product @relation(fields: [productId], references: [id])
+  productId Int
+
+  fromLocation   Location? @relation("FromLocation", fields: [fromLocationId], references: [id])
+  fromLocationId Int?
+
+  toLocation   Location? @relation("ToLocation", fields: [toLocationId], references: [id])
+  toLocationId Int?
+
+  quantity Int
+
+  type MovementType
+
+  // 🔥 NUEVO
+  unitCost Float @default(0)
+
+  // 🔥 OPCIONAL
+  reference  String?
+  transfer   Transfer? @relation(fields: [transferId], references: [id])
+  transferId Int?
+  createdAt  DateTime  @default(now())
+}
+
+enum MovementType {
+  IN
+  OUT
+  TRANSFER
+}
+
+//////////////////////
+// 🔥 TRANSFERENCIAS (AJUSTADO)
+//////////////////////
+
+model Transfer {
+  id             Int       @id @default(autoincrement())
+  transferCode   String?
+  // 🔥 AHORA OPCIONALES (CLAVE DEL CAMBIO)
+  fromLocation   Location? @relation("FromTransfer", fields: [fromLocationId], references: [id])
+  fromLocationId Int?
+
+  toLocation   Location? @relation("ToTransfer", fields: [toLocationId], references: [id])
+  toLocationId Int?
+
+  status TransferStatus @default(PENDING)
+
+  createdAt DateTime @default(now())
+
+  requestedById Int
+  requestedBy   Employee @relation("RequestedBy", fields: [requestedById], references: [id])
+
+  approvedById Int?
+  approvedBy   Employee? @relation("ApprovedBy", fields: [approvedById], references: [id])
+
+  approvedAt DateTime?
+  executedAt DateTime?
+
+  // 🔥 OPCIONAL (RECOMENDADO)
+  rejectionReason String?
+
+  items     TransferItem[]
+  movements StockMovement[]
+
+  @@index([fromLocationId])
+  @@index([status])
+}
+
+model TransferItem {
+  id Int @id @default(autoincrement())
+
+  transfer   Transfer @relation(fields: [transferId], references: [id])
+  transferId Int
+
+  product   Product @relation(fields: [productId], references: [id])
+  productId Int
+
+  quantity Int
+}
+
+enum TransferStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+//////////////////////
+// 💰 VENTAS
+//////////////////////
+
+model Sale {
+  id         Int      @id @default(autoincrement())
+  date       DateTime @default(now())
+  location   Location @relation(fields: [locationId], references: [id])
+  locationId Int
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  employeeId Int
+
+  total Float
+
+  code   String?
+  pdfUrl String?
+
+  details SaleDetail[]
+
+  typeSale             String?
+  transactionNumber    String?
+  paymentMethodChanged Boolean? @default(false)
+  dateChanged          Boolean? @default(false)
+}
+
+model SaleDetail {
+  id        Int     @id @default(autoincrement())
+  sale      Sale    @relation(fields: [saleId], references: [id])
+  saleId    Int
+  product   Product @relation(fields: [productId], references: [id])
+  productId Int
+  quantity  Int
+  price     Float
+}
