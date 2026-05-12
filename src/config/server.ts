@@ -3,8 +3,9 @@ import cors from 'cors'
 import morgan from 'morgan'
 import compression from 'compression'
 import authenticationRoute from '../routes/authentication.routes'
+import productRoute from '../routes/product.routes'
 
-//import { verifyToken } from '../middleware/auth.middleware'
+import { verifyToken } from '../middleware/auth.middleware'
 
 const app = express()
 
@@ -15,5 +16,6 @@ app.use(express.json())
 app.use(urlencoded({ extended: true }))
 
 app.use('/api/authentication', authenticationRoute)
+app.use('/api/product',verifyToken, productRoute)
 
 export default app
