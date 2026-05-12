@@ -95,8 +95,7 @@ model Product {
   id          Int     @id @default(autoincrement())
   name        String
   description String?
-  barcode     String  @unique
-  imageUrl    String?
+  code        String  @unique
   price       Float
   finalPrice  Float
   isVisible   Boolean @default(true)
