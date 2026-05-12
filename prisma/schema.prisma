@@ -96,7 +96,6 @@ model Product {
   name        String
   description String?
   code        String  @unique
-  imageUrl    String?
   price       Float
   finalPrice  Float
   isVisible   Boolean @default(true)

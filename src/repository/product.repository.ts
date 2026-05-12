@@ -96,7 +96,6 @@ export const updateProductRepo = async (id: number, data: any) => {
         code: productData.code,
         price: productData.price,
         finalPrice: productData.finalPrice,
-        imageUrl: productData.imageUrl,
         lineId: productData.lineId,
         brandName: productData.brandName,
       },
