@@ -6,8 +6,6 @@ import {
   getProductByIdRepo,
   updateProductRepo,
   deleteProductRepo,
-  getKardexRepo,
-  getKardexRepository,
 } from "../repository/product.repository";
 import jwt from "jsonwebtoken";
 
@@ -17,7 +15,6 @@ export const createProduct = async (req: Request, res: Response) => {
       name,
       description,
       code,
-      imageUrl,
       price,
       finalPrice,
       stock,
@@ -70,7 +67,6 @@ export const createProduct = async (req: Request, res: Response) => {
           name: name.trim().toUpperCase(),
           description,
           code: code.trim(),
-          imageUrl,
           price: Number(price),
           finalPrice: Number(finalPrice),
           lineId: Number(lineId),
@@ -245,45 +241,5 @@ export const deleteProduct = async (req: Request, res: Response) => {
     return res.json({ message: "Producto eliminado" });
   } catch {
     return res.status(500).json({ message: "No se pudo eliminar el producto" });
-  }
-};
-
-export const getKardex = async (req: Request, res: Response) => {
-  try {
-
-    const kardex = await getKardexRepo(req.body);
-
-    return res.status(200).json(kardex); 
-  } catch (error) {
-    console.error("Error en kardex:", error);
-
-    return res.status(500).json({
-      message: "Error al generar kardex",
-    });
-  }
-};
-
-export const getKardexPro = async (
-  req: Request,
-  res: Response,
-) => {
-  try {
-    const data = await getKardexRepository(
-      req.body,
-    );
-
-    return res.status(200).json({
-      ok: true,
-      data,
-    });
-  } catch (error: any) {
-    console.error(error);
-
-    return res.status(500).json({
-      ok: false,
-      message:
-        error.message ||
-        "Error obteniendo kardex",
-    });
   }
 };

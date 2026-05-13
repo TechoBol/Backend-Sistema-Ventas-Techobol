@@ -96,7 +96,6 @@ model Product {
   name        String
   description String?
   code        String  @unique
-  imageUrl    String?
   price       Float
   finalPrice  Float
   isVisible   Boolean @default(true)
@@ -231,12 +230,22 @@ enum TransferStatus {
 //////////////////////
 
 model Sale {
-  id         Int      @id @default(autoincrement())
-  date       DateTime @default(now())
+  id   Int      @id @default(autoincrement())
+  date DateTime @default(now())
+
   location   Location @relation(fields: [locationId], references: [id])
   locationId Int
+
   employee   Employee @relation(fields: [employeeId], references: [id])
   employeeId Int
+
+  // 🔥 CLIENTE
+  customer   Customer? @relation(fields: [customerId], references: [id])
+  customerId Int?
+
+  subtotal Float @default(0)
+
+  discount Float @default(0)
 
   total Float
 
@@ -252,11 +261,43 @@ model Sale {
 }
 
 model SaleDetail {
-  id        Int     @id @default(autoincrement())
-  sale      Sale    @relation(fields: [saleId], references: [id])
-  saleId    Int
+  id Int @id @default(autoincrement())
+
+  sale   Sale @relation(fields: [saleId], references: [id])
+  saleId Int
+
   product   Product @relation(fields: [productId], references: [id])
   productId Int
-  quantity  Int
-  price     Float
+
+  quantity Int
+
+  unitPrice Float
+
+  itemDiscount Float @default(0)
+
+  subtotal Float
+}
+
+model Customer {
+  id Int @id @default(autoincrement())
+
+  name String
+
+  nitCi String? @unique
+
+  businessName String?
+
+  phone String?
+
+  address String?
+
+  latitude Float?
+
+  longitude Float?
+
+  isVisible Boolean @default(true)
+
+  sales Sale[]
+
+  createdAt DateTime @default(now())
 }
