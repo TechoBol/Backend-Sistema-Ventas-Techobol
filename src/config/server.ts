@@ -6,6 +6,7 @@ import authenticationRoute from '../routes/authentication.routes'
 import productRoute from '../routes/product.routes'
 import lineRoute from '../routes/line.routes'
 import saleRoute from '../routes/sale.routes'
+import customerRoute from '../routes/customer.routes'
 
 import { verifyToken } from '../middleware/auth.middleware'
 
@@ -21,5 +22,6 @@ app.use('/api/authentication', authenticationRoute)
 app.use('/api/product',verifyToken, productRoute)
 app.use('/api/line',verifyToken, lineRoute)
 app.use('/api/sale',verifyToken, saleRoute)
+app.use('/api/customer',verifyToken, customerRoute)
 
 export default app
