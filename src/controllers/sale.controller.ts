@@ -202,7 +202,7 @@ export const createSale = async (
             code,
 
             pdfUrl:
-              `ECOZONA/SALES/${code}.pdf`,
+              `MEGADIS/SALES/${code}.pdf`,
 
             typeSale:
               metodoPago,
