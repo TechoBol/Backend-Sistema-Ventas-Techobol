@@ -171,6 +171,8 @@ export const getSalesRepo = async (
       typeSale: true,
 
       transactionNumber: true,
+      
+      discount:true,
 
       customer: true,
 
