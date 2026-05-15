@@ -202,7 +202,7 @@ model Transfer {
 
   items     TransferItem[]
   movements StockMovement[]
-
+  glosa String?
   @@index([fromLocationId])
   @@index([status])
 }
@@ -286,6 +286,8 @@ model Customer {
   nitCi String? @unique
 
   businessName String?
+
+  code String? @unique
 
   phone String?
 

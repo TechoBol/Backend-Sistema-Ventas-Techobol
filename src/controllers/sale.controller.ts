@@ -13,13 +13,8 @@ import {
 
 import jwt from "jsonwebtoken";
 
-export const createSale = async (
-  req: Request,
-  res: Response,
-) => {
-
+export const createSale = async (req: Request, res: Response) => {
   try {
-
     const {
       locationId,
       products,
@@ -30,18 +25,12 @@ export const createSale = async (
       customer,
     } = req.body;
 
-    const token =
-      req.headers["x-access-token"] as string;
+    const token = req.headers["x-access-token"] as string;
 
-    const user = jwt.verify(
-      token,
-      process.env.JWTSECRET!,
-    ) as any;
+    const user = jwt.verify(token, process.env.JWTSECRET!) as any;
 
     const sale = await prisma.$transaction(
-
       async (tx) => {
-
         // =====================================================
         // 🔥 VALIDAR STOCK
         // =====================================================
@@ -49,46 +38,29 @@ export const createSale = async (
         let totalDiscount = 0;
 
         for (const item of products) {
+          const inventory = await getInventoryRepo(
+            tx,
+            item.productId,
+            locationId,
+          );
 
-          const inventory =
-            await getInventoryRepo(
-              tx,
-              item.productId,
-              locationId,
-            );
-
-          if (
-            !inventory ||
-            inventory.quantity < item.quantity
-          ) {
-
-            throw new Error(
-              "Stock insuficiente",
-            );
-
+          if (!inventory || inventory.quantity < item.quantity) {
+            throw new Error("Stock insuficiente");
           }
-
         }
 
         // =====================================================
         // 🔥 VALIDAR EMPLEADO
         // =====================================================
 
-        const employee =
-          await tx.employee.findUnique({
-
-            where: {
-              id: Number(user.id),
-            },
-
-          });
+        const employee = await tx.employee.findUnique({
+          where: {
+            id: Number(user.id),
+          },
+        });
 
         if (!employee) {
-
-          throw new Error(
-            "Empleado no encontrado",
-          );
-
+          throw new Error("Empleado no encontrado");
         }
 
         // =====================================================
@@ -98,83 +70,86 @@ export const createSale = async (
         let customerId: number | null = null;
 
         if (customer?.nitCi) {
-
-          const existingCustomer =
-            await tx.customer.findUnique({
-
-              where: {
-                nitCi: customer.nitCi,
-              },
-
-            });
+          const existingCustomer = await tx.customer.findUnique({
+            where: {
+              nitCi: customer.nitCi,
+            },
+          });
 
           if (existingCustomer) {
-
-            customerId =
-              existingCustomer.id;
-
+            customerId = existingCustomer.id;
           } else {
+            const generateCustomerCode = (length = 8) => {
+              const chars =
+                "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 
-            const newCustomer =
-              await tx.customer.create({
+              let result = "";
 
-                data: {
+              for (let i = 0; i < length; i++) {
+                result += chars.charAt(
+                  Math.floor(Math.random() * chars.length),
+                );
+              }
 
-                  name:
-                    customer.name,
+              return result;
+            };
 
-                  nitCi:
-                    customer.nitCi,
+            let customerCode = "";
 
-                  businessName:
-                    customer.businessName,
+            let exists = true;
 
-                  phone:
-                    customer.phone,
+            // evitar duplicados
+            while (exists) {
+              customerCode = generateCustomerCode(8);
 
-                  address:
-                    customer.address,
-
-                  latitude:
-                    customer.latitude,
-
-                  longitude:
-                    customer.longitude,
-
+              const existingCode = await tx.customer.findUnique({
+                where: {
+                  code: customerCode,
                 },
-
               });
 
-            customerId =
-              newCustomer.id;
+              exists = !!existingCode;
+            }
+            const newCustomer = await tx.customer.create({
+              data: {
+                name: customer.name,
 
+                code: customerCode,
+
+                nitCi: customer.nitCi,
+
+                businessName: customer.businessName,
+
+                phone: customer.phone,
+
+                address: customer.address,
+
+                latitude: customer.latitude,
+
+                longitude: customer.longitude,
+              },
+            });
+
+            customerId = newCustomer.id;
           }
-
         }
 
         // =====================================================
         // 🔥 INCREMENTAR CONTADOR
         // =====================================================
 
-        const location =
-          await incrementLocationCounterRepo(
-            tx,
-            locationId,
-          );
+        const location = await incrementLocationCounterRepo(tx, locationId);
 
-        const saleNumber =
-          location.saleCounter;
+        const saleNumber = location.saleCounter;
 
-        const code =
-          `${location.abbreviation}-${saleNumber}`;
+        const code = `${location.abbreviation}-${saleNumber}`;
 
         // =====================================================
         // 🔥 CALCULAR DESCUENTO TOTAL
         // =====================================================
 
         totalDiscount = products.reduce(
-          (acc: number, item: any) =>
-            acc + Number(item.itemDiscount || 0),
+          (acc: number, item: any) => acc + Number(item.itemDiscount || 0),
           0,
         );
 
@@ -182,109 +157,75 @@ export const createSale = async (
         // 🔥 CREAR VENTA
         // =====================================================
 
-        const newSale =
-          await createSaleRepo(tx, {
+        const newSale = await createSaleRepo(tx, {
+          employeeId: Number(user.id),
 
-            employeeId:
-              Number(user.id),
+          locationId,
 
-            locationId,
+          customerId,
 
-            customerId,
+          subtotal,
 
-            subtotal,
+          discount: totalDiscount,
 
-            discount:
-              totalDiscount,
+          total,
 
-            total,
+          code,
 
-            code,
+          pdfUrl: `MEGADIS/SALES/${code}.pdf`,
 
-            pdfUrl:
-              `MEGADIS/SALES/${code}.pdf`,
+          typeSale: metodoPago,
 
-            typeSale:
-              metodoPago,
-
-            transactionNumber:
-              codigoTransaccion,
-
-          });
+          transactionNumber: codigoTransaccion,
+        });
 
         // =====================================================
         // 🔥 DETALLES
         // =====================================================
 
         for (const item of products) {
-
-          const product =
-            await getProductRepo(
-              tx,
-              item.productId,
-            );
+          const product = await getProductRepo(tx, item.productId);
 
           if (!product) {
-
-            throw new Error(
-              "Producto no encontrado",
-            );
-
+            throw new Error("Producto no encontrado");
           }
 
-          const inventory =
-            await getInventoryRepo(
-              tx,
-              item.productId,
-              locationId,
-            );
+          const inventory = await getInventoryRepo(
+            tx,
+            item.productId,
+            locationId,
+          );
 
           if (!inventory) {
-
-            throw new Error(
-              "Inventario no encontrado",
-            );
-
+            throw new Error("Inventario no encontrado");
           }
 
           // ==========================================
           // 🔥 CALCULOS
           // ==========================================
 
-          const unitPrice =
-            product.finalPrice;
+          const unitPrice = product.finalPrice;
 
-          const itemDiscount =
-            Number(
-              item.itemDiscount || 0,
-            );
+          const itemDiscount = Number(item.itemDiscount || 0);
 
-          const detailSubtotal =
-            (unitPrice * item.quantity)
-            - itemDiscount;
+          const detailSubtotal = unitPrice * item.quantity - itemDiscount;
 
           // ==========================================
           // 🔥 DETAIL
           // ==========================================
 
           await createSaleDetailRepo(tx, {
+            saleId: newSale.id,
 
-            saleId:
-              newSale.id,
+            productId: item.productId,
 
-            productId:
-              item.productId,
-
-            quantity:
-              item.quantity,
+            quantity: item.quantity,
 
             unitPrice,
 
             itemDiscount,
 
-            subtotal:
-              detailSubtotal,
-
+            subtotal: detailSubtotal,
           });
 
           // ==========================================
@@ -303,31 +244,20 @@ export const createSale = async (
           // ==========================================
 
           await tx.stockMovement.create({
-
             data: {
+              productId: item.productId,
 
-              productId:
-                item.productId,
+              fromLocationId: locationId,
 
-              fromLocationId:
-                locationId,
-
-              quantity:
-                item.quantity,
+              quantity: item.quantity,
 
               type: "OUT",
 
-              unitCost:
-                inventory.averageCost
-                || product.price,
+              unitCost: inventory.averageCost || product.price,
 
-              reference:
-                `VENTA ${code}`,
-
+              reference: `VENTA ${code}`,
             },
-
           });
-
         }
 
         // =====================================================
@@ -335,13 +265,11 @@ export const createSale = async (
         // =====================================================
 
         return await tx.sale.findUnique({
-
           where: {
             id: newSale.id,
           },
 
           include: {
-
             customer: true,
 
             location: true,
@@ -349,50 +277,31 @@ export const createSale = async (
             employee: true,
 
             details: {
-
               include: {
                 product: true,
               },
-
             },
-
           },
-
         });
-
       },
 
       {
         timeout: 15000,
       },
-
     );
 
     return res.json({
-
       message: "Venta completada",
 
       sale,
-
     });
-
   } catch (err: any) {
-
-    console.error(
-      "❌ ERROR CREATE SALE:",
-      err,
-    );
+    console.error("❌ ERROR CREATE SALE:", err);
 
     return res.status(500).json({
-
-      message:
-        err.message
-        || "No se pudo crear la venta",
-
+      message: err.message || "No se pudo crear la venta",
     });
-
   }
-
 };
 
 export const getSales = async (req: Request, res: Response) => {
