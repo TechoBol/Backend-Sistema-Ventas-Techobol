@@ -9,9 +9,15 @@ import {
   incrementLocationCounterRepo,
   getProductRepo,
   getSalesRepo,
+  createStockMovementRepo,
+  getProductUnitRepo,
 } from "../repository/sale.repository";
 
 import jwt from "jsonwebtoken";
+
+// =====================================================
+// 🔥 CREATE SALE
+// =====================================================
 
 export const createSale = async (req: Request, res: Response) => {
   try {
@@ -31,11 +37,9 @@ export const createSale = async (req: Request, res: Response) => {
 
     const sale = await prisma.$transaction(
       async (tx) => {
-        // =====================================================
+        //////////////////////////////////////////////////////
         // 🔥 VALIDAR STOCK
-        // =====================================================
-
-        let totalDiscount = 0;
+        //////////////////////////////////////////////////////
 
         for (const item of products) {
           const inventory = await getInventoryRepo(
@@ -44,14 +48,20 @@ export const createSale = async (req: Request, res: Response) => {
             locationId,
           );
 
-          if (!inventory || inventory.quantity < item.quantity) {
-            throw new Error("Stock insuficiente");
+          const realQuantity =
+            Number(item.quantity) *
+            Number(item.equivalence);
+
+          if (!inventory || inventory.quantity < realQuantity) {
+            throw new Error(
+              `Stock insuficiente para producto ${item.productId}`,
+            );
           }
         }
 
-        // =====================================================
+        //////////////////////////////////////////////////////
         // 🔥 VALIDAR EMPLEADO
-        // =====================================================
+        //////////////////////////////////////////////////////
 
         const employee = await tx.employee.findUnique({
           where: {
@@ -63,9 +73,9 @@ export const createSale = async (req: Request, res: Response) => {
           throw new Error("Empleado no encontrado");
         }
 
-        // =====================================================
+        //////////////////////////////////////////////////////
         // 🔥 CLIENTE
-        // =====================================================
+        //////////////////////////////////////////////////////
 
         let customerId: number | null = null;
 
@@ -98,7 +108,6 @@ export const createSale = async (req: Request, res: Response) => {
 
             let exists = true;
 
-            // evitar duplicados
             while (exists) {
               customerCode = generateCustomerCode(8);
 
@@ -110,6 +119,7 @@ export const createSale = async (req: Request, res: Response) => {
 
               exists = !!existingCode;
             }
+
             const newCustomer = await tx.customer.create({
               data: {
                 name: customer.name,
@@ -134,28 +144,32 @@ export const createSale = async (req: Request, res: Response) => {
           }
         }
 
-        // =====================================================
+        //////////////////////////////////////////////////////
         // 🔥 INCREMENTAR CONTADOR
-        // =====================================================
+        //////////////////////////////////////////////////////
 
-        const location = await incrementLocationCounterRepo(tx, locationId);
+        const location = await incrementLocationCounterRepo(
+          tx,
+          locationId,
+        );
 
         const saleNumber = location.saleCounter;
 
         const code = `${location.abbreviation}-${saleNumber}`;
 
-        // =====================================================
-        // 🔥 CALCULAR DESCUENTO TOTAL
-        // =====================================================
+        //////////////////////////////////////////////////////
+        // 🔥 DESCUENTO TOTAL
+        //////////////////////////////////////////////////////
 
-        totalDiscount = products.reduce(
-          (acc: number, item: any) => acc + Number(item.itemDiscount || 0),
+        const totalDiscount = products.reduce(
+          (acc: number, item: any) =>
+            acc + Number(item.itemDiscount || 0),
           0,
         );
 
-        // =====================================================
-        // 🔥 CREAR VENTA
-        // =====================================================
+        //////////////////////////////////////////////////////
+        // 🔥 CREAR SALE
+        //////////////////////////////////////////////////////
 
         const newSale = await createSaleRepo(tx, {
           employeeId: Number(user.id),
@@ -179,15 +193,27 @@ export const createSale = async (req: Request, res: Response) => {
           transactionNumber: codigoTransaccion,
         });
 
-        // =====================================================
-        // 🔥 DETALLES
-        // =====================================================
+        //////////////////////////////////////////////////////
+        // 🔥 DETAILS + INVENTARIO + MOVIMIENTOS
+        //////////////////////////////////////////////////////
 
         for (const item of products) {
-          const product = await getProductRepo(tx, item.productId);
+          const product = await getProductRepo(
+            tx,
+            item.productId,
+          );
 
           if (!product) {
             throw new Error("Producto no encontrado");
+          }
+
+          const productUnit = await getProductUnitRepo(
+            tx,
+            item.productUnitId,
+          );
+
+          if (!productUnit) {
+            throw new Error("Unidad no encontrada");
           }
 
           const inventory = await getInventoryRepo(
@@ -200,26 +226,44 @@ export const createSale = async (req: Request, res: Response) => {
             throw new Error("Inventario no encontrado");
           }
 
-          // ==========================================
-          // 🔥 CALCULOS
-          // ==========================================
+          ////////////////////////////////////////////////////
+          // 🔥 CANTIDAD REAL
+          ////////////////////////////////////////////////////
 
-          const unitPrice = product.finalPrice;
+          const realQuantity =
+            Number(item.quantity) *
+            Number(item.equivalence);
 
-          const itemDiscount = Number(item.itemDiscount || 0);
+          ////////////////////////////////////////////////////
+          // 🔥 PRECIOS
+          ////////////////////////////////////////////////////
 
-          const detailSubtotal = unitPrice * item.quantity - itemDiscount;
+          const unitPrice = Number(productUnit.salePrice);
 
-          // ==========================================
-          // 🔥 DETAIL
-          // ==========================================
+          const itemDiscount = Number(
+            item.itemDiscount || 0,
+          );
+
+          const detailSubtotal =
+            unitPrice * Number(item.quantity) -
+            itemDiscount;
+
+          ////////////////////////////////////////////////////
+          // 🔥 SALE DETAIL
+          ////////////////////////////////////////////////////
 
           await createSaleDetailRepo(tx, {
             saleId: newSale.id,
 
             productId: item.productId,
 
-            quantity: item.quantity,
+            productUnitId: item.productUnitId,
+
+            unitName: productUnit.unit.name,
+
+            equivalence: Number(item.equivalence),
+
+            quantity: Number(item.quantity),
 
             unitPrice,
 
@@ -228,41 +272,45 @@ export const createSale = async (req: Request, res: Response) => {
             subtotal: detailSubtotal,
           });
 
-          // ==========================================
+          ////////////////////////////////////////////////////
           // 🔥 INVENTARIO
-          // ==========================================
+          ////////////////////////////////////////////////////
 
           await updateInventoryRepo(
             tx,
             item.productId,
             locationId,
-            item.quantity,
+            realQuantity,
           );
 
-          // ==========================================
+          ////////////////////////////////////////////////////
           // 🔥 KARDEX
-          // ==========================================
+          ////////////////////////////////////////////////////
 
-          await tx.stockMovement.create({
-            data: {
-              productId: item.productId,
+          await createStockMovementRepo(tx, {
+            productId: item.productId,
 
-              fromLocationId: locationId,
+            productUnitId: item.productUnitId,
 
-              quantity: item.quantity,
+            fromLocationId: locationId,
 
-              type: "OUT",
+            quantity: realQuantity,
 
-              unitCost: inventory.averageCost || product.price,
+            presentationQuantity: Number(item.quantity),
 
-              reference: `VENTA ${code}`,
-            },
+            type: "OUT",
+
+            unitCost:
+              inventory.averageCost ||
+              product.purchasePrice,
+
+            reference: `VENTA ${code}`,
           });
         }
 
-        // =====================================================
+        //////////////////////////////////////////////////////
         // 🔥 OBTENER SALE COMPLETA
-        // =====================================================
+        //////////////////////////////////////////////////////
 
         return await tx.sale.findUnique({
           where: {
@@ -279,6 +327,12 @@ export const createSale = async (req: Request, res: Response) => {
             details: {
               include: {
                 product: true,
+
+                productUnit: {
+                  include: {
+                    unit: true,
+                  },
+                },
               },
             },
           },
