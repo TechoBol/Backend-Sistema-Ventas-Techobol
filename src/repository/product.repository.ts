@@ -1,21 +1,8 @@
 import prisma from "../config/db";
 
-type CreateProductDTO = {
-  name: string;
-  description?: string;
-  code: string;
-  imageUrl?: string;
-  price: number;
-  finalPrice: number;
-  lineId: number;
-  brandName: string;
-};
-
-export const createProductRepo = async (data: CreateProductDTO) => {
-  return prisma.product.create({
-    data,
-  });
-};
+//////////////////////////////////////////////////////////
+// GET PRODUCTS
+//////////////////////////////////////////////////////////
 
 export const getProductsRepo = async (
   locationId: number,
@@ -23,177 +10,247 @@ export const getProductsRepo = async (
 ) => {
   if (isManagement) {
     const products = await prisma.product.findMany({
-      where: { isVisible: true },
+      where: {
+        isVisible: true,
+      },
+
       include: {
         line: true,
+
+        baseUnit: true,
+
+        productUnits: {
+          include: {
+            unit: true,
+          },
+        },
+
         inventories: {
           include: {
             location: {
-              select: { id: true, name: true },
+              select: {
+                id: true,
+                name: true,
+              },
             },
           },
         },
       },
     });
 
-    return products
-      .map((p) => ({
-        ...p,
-        stockTotal: p.inventories.reduce((acc, inv) => acc + inv.quantity, 0),
-        inventories: p.inventories.map((inv) => ({
-          locationId: inv.locationId,
-          locationName: inv.location.name,
-          quantity: inv.quantity,
-        })),
-      }))
-      .sort((a, b) => b.stockTotal - a.stockTotal);
+    return products.map((p) => ({
+      ...p,
+
+      stockTotal: p.inventories.reduce(
+        (acc, inv) => acc + inv.quantity,
+        0,
+      ),
+    }));
   }
 
   const products = await prisma.product.findMany({
-    where: { isVisible: true },
+    where: {
+      isVisible: true,
+    },
+
     include: {
       line: true,
+
+      baseUnit: true,
+
+      productUnits: {
+        include: {
+          unit: true,
+        },
+      },
+
       inventories: {
-        where: { locationId },
+        where: {
+          locationId,
+        },
+
+        include: {
+          location: true,
+        },
       },
     },
   });
 
-  return products.sort((a, b) => {
-    const stockA = a.inventories[0]?.quantity || 0;
-    const stockB = b.inventories[0]?.quantity || 0;
-    return stockB - stockA;
-  });
+  return products.map((p) => ({
+    ...p,
+
+    stockTotal: p.inventories.reduce(
+      (acc, inv) => acc + inv.quantity,
+      0,
+    ),
+  }));
 };
 
-export const getProductByIdRepo = async (id: number) => {
+//////////////////////////////////////////////////////////
+// GET PRODUCT BY ID
+//////////////////////////////////////////////////////////
+
+export const getProductByIdRepo = async (
+  id: number,
+) => {
   return prisma.product.findUnique({
-    where: { id },
+    where: {
+      id,
+    },
+
     include: {
       line: true,
-      inventories: true,
+
+      baseUnit: true,
+
+      productUnits: {
+        include: {
+          unit: true,
+        },
+      },
+
+      inventories: {
+        include: {
+          location: true,
+        },
+      },
     },
   });
 };
 
-export const updateProductRepo = async (id: number, data: any) => {
-  const { stock, locationId, inventoryEdited, ...productData } = data;
+//////////////////////////////////////////////////////////
+// UPDATE PRODUCT
+//////////////////////////////////////////////////////////
+
+export const updateProductRepo = async (
+  id: number,
+  data: any,
+) => {
+  const {
+    productUnits,
+    ...productData
+  } = data;
 
   return prisma.$transaction(async (tx) => {
-    const currentProduct = await tx.product.findUnique({
-      where: { id },
-    });
+    //////////////////////////////////////////////////////
+    // VALIDAR DEFAULT
+    //////////////////////////////////////////////////////
 
-    if (!currentProduct) {
-      throw new Error("Producto no encontrado");
+    const defaultCount = productUnits.filter(
+      (x: any) => x.isDefault,
+    ).length;
+
+    if (defaultCount !== 1) {
+      throw new Error(
+        "Debe existir una presentación por defecto",
+      );
     }
+
+    //////////////////////////////////////////////////////
+    // ACTUALIZAR PRODUCTO
+    //////////////////////////////////////////////////////
+
+    const defaultPresentation =
+      productUnits.find(
+        (x: any) => x.isDefault,
+      );
 
     await tx.product.update({
-      where: { id },
+      where: {
+        id,
+      },
+
       data: {
-        name: productData.name,
-        description: productData.description,
-        code: productData.code,
-        price: productData.price,
-        finalPrice: productData.finalPrice,
-        lineId: productData.lineId,
-        brandName: productData.brandName,
+        name: productData.name
+          ?.trim()
+          ?.toUpperCase(),
+
+        description:
+          productData.description,
+
+        code: productData.code
+          ?.trim(),
+
+        lineId: Number(
+          productData.lineId,
+        ),
+
+        brandName:
+          productData.brandName,
+
+        baseUnitId: Number(
+          productData.baseUnitId,
+        ),
+
+        purchasePrice: Number(
+          productData.purchasePrice || 0,
+        ),
+
+        salePrice: Number(
+          defaultPresentation.salePrice,
+        ),
       },
     });
-    if (inventoryEdited) {
-      if (stock !== undefined && locationId) {
-        const inventory = await tx.inventory.findUnique({
-          where: {
-            productId_locationId: {
-              productId: id,
-              locationId,
-            },
-          },
-        });
 
-        if (!inventory) {
-          await tx.inventory.create({
-            data: {
-              productId: id,
-              locationId,
+    //////////////////////////////////////////////////////
+    // ELIMINAR PRESENTACIONES
+    //////////////////////////////////////////////////////
 
-              quantity: stock,
+    await tx.productUnit.deleteMany({
+      where: {
+        productId: id,
+      },
+    });
 
-              averageCost: productData.price,
-            },
-          });
+    //////////////////////////////////////////////////////
+    // CREAR PRESENTACIONES
+    //////////////////////////////////////////////////////
 
-          await tx.stockMovement.create({
-            data: {
-              productId: id,
+    for (const item of productUnits) {
+      await tx.productUnit.create({
+        data: {
+          productId: id,
 
-              toLocationId: locationId,
+          unitId: Number(item.unitId),
 
-              quantity: stock,
+          equivalence: Number(
+            item.equivalence,
+          ),
 
-              type: "IN",
+          purchasePrice: Number(
+            item.purchasePrice || 0,
+          ),
 
-              unitCost: productData.price,
+          salePrice: Number(
+            item.salePrice,
+          ),
 
-              reference: "NUEVO INGRESO",
-            },
-          });
-        } else {
-          const cantidadActual = inventory.quantity;
-
-          const costoActual = inventory.averageCost;
-
-          const totalActual = cantidadActual * costoActual;
-
-          const totalNuevo = stock * productData.price;
-
-          const nuevaCantidad = cantidadActual + stock;
-
-          const nuevoPromedio =
-            nuevaCantidad > 0
-              ? (totalActual + totalNuevo) / nuevaCantidad
-              : productData.price;
-
-          await tx.inventory.update({
-            where: {
-              productId_locationId: {
-                productId: id,
-                locationId,
-              },
-            },
-
-            data: {
-              quantity: {
-                increment: stock,
-              },
-
-              averageCost: nuevoPromedio,
-            },
-          });
-
-          await tx.stockMovement.create({
-            data: {
-              productId: id,
-
-              toLocationId: locationId,
-
-              quantity: stock,
-
-              type: "IN",
-
-              unitCost: productData.price,
-
-              reference: "REPOSICION STOCK",
-            },
-          });
-        }
-      }
+          isDefault:
+            item.isDefault || false,
+        },
+      });
     }
 
+    //////////////////////////////////////////////////////
+    // RETORNAR
+    //////////////////////////////////////////////////////
+
     return tx.product.findUnique({
-      where: { id },
+      where: {
+        id,
+      },
+
       include: {
         line: true,
+
+        baseUnit: true,
+
+        productUnits: {
+          include: {
+            unit: true,
+          },
+        },
+
         inventories: {
           include: {
             location: true,
@@ -204,10 +261,20 @@ export const updateProductRepo = async (id: number, data: any) => {
   });
 };
 
-export const deleteProductRepo = async (id: number) => {
+//////////////////////////////////////////////////////////
+// DELETE PRODUCT
+//////////////////////////////////////////////////////////
+
+export const deleteProductRepo = async (
+  id: number,
+) => {
   return prisma.product.update({
-    where: { id },
-    data: { isVisible: false },
+    where: {
+      id,
+    },
+
+    data: {
+      isVisible: false,
+    },
   });
 };
-
