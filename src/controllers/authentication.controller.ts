@@ -14,7 +14,7 @@ export const signIn = async (req: Request, res: Response) => {
       return res.status(400).json({ message: "email and password required" });
     }
     const employee = await prisma.employee.findUnique({
-      where: { email },
+      where: { email, isVisible: true },
       select: {
         id: true,
         name: true,

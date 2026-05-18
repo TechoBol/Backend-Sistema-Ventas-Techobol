@@ -109,7 +109,7 @@ export const deleteEmployeeRepo = async (id: number) => {
     where: { id },
     data: {
       isVisible: false,
-      email: Math.random().toString(36).slice(-10), // evitar conflicto unique
+      //email: Math.random().toString(36).slice(-10), // evitar conflicto unique
     },
   });
 };
