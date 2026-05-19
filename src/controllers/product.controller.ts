@@ -345,21 +345,22 @@ export const getProductById = async (req: Request, res: Response) => {
 // UPDATE PRODUCT
 //////////////////////////////////////////////////////////
 
-export const updateProduct = async (req: Request, res: Response) => {
-  try {
-    const id = Number(req.params.id);
+  export const updateProduct = async (req: Request, res: Response) => {
+    try {
+      const id = Number(req.params.id);
 
-    const updated = await updateProductRepo(id, req.body);
+      const updated = await updateProductRepo(id, req.body);
 
-    return res.json(updated);
-  } catch (error) {
-    console.error(error);
-
-    return res.status(500).json({
-      message: "No se pudo actualizar el producto",
-    });
-  }
-};
+      return res.json(updated);
+    } catch (error: any) {
+      console.error("UPDATE PRODUCT ERROR:", error);
+    
+      return res.status(500).json({
+        message: error.message || "No se pudo actualizar el producto",
+        error,
+      });
+    }
+  };
 
 //////////////////////////////////////////////////////////
 // DELETE PRODUCT

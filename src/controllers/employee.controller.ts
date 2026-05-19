@@ -9,6 +9,7 @@ import {
 } from "../repository/employee.repository";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
+import { sendEmployeeCredentials } from "../utils/sendEmployeeCredentials";
 
 //////////////////////////////
 // GET ALL
@@ -32,25 +33,44 @@ export const getEmployees = async (req: Request, res: Response) => {
 //////////////////////////////
 // CREATE
 //////////////////////////////
+
+const generatePassword = (name: string, lastName: string, numeral: number): string => {
+  // primeras 3 letras apellido
+  const lastNamePart = lastName.trim().substring(0, 3).toLowerCase();
+
+  // primeras 3 letras nombre
+  const namePart = name.trim().substring(0, 3).toLowerCase();
+
+  // primera letra del apellido en mayúscula
+  const firstCharLastName = lastName.trim().charAt(0).toUpperCase();
+
+  // ASCII del apellido
+  const asciiValue = firstCharLastName.charCodeAt(0);
+
+  return `${lastNamePart}${numeral}${namePart}${asciiValue}`;
+};
+
 export const createEmployee = async (req: Request, res: Response) => {
   try {
-    const { name, lastName, email, password, roleId, locationId } = req.body;
+    const { name, lastName, email, roleId, locationId, numeral ,
+      celular } = req.body;
 
-    // VALIDACIÓN BÁSICA
-    if (!name || !lastName || !roleId) {
+    // VALIDACIÓN
+    if (!name || !lastName || !roleId || !email || !numeral || !celular) {
       return res.status(400).json({
-        message: "Debes completar nombre, apellido y rol",
+        message: "Debes completar nombre, apellido, correo y rol",
       });
     }
 
-    // CIFRAR PASSWORD
-    let hashedPassword = null;
+    // GENERAR PASSWORD
+    const generatedPassword = generatePassword(name, lastName,numeral);
 
-    if (password) {
-      const saltRounds = 10;
-      hashedPassword = await bcrypt.hash(password, saltRounds);
-    }
+    // HASHEAR
+    const saltRounds = 10;
 
+    const hashedPassword = await bcrypt.hash(generatedPassword, saltRounds);
+
+    // CREAR EMPLEADO
     const data = await createEmployeeRepo({
       name,
       lastName,
@@ -58,6 +78,15 @@ export const createEmployee = async (req: Request, res: Response) => {
       password: hashedPassword,
       roleId,
       locationId,
+      numeral,
+      celular
+    });
+
+    // ENVIAR CORREO
+    await sendEmployeeCredentials({
+      email,
+      name,lastName,
+      password: generatedPassword,
     });
 
     return res.json(data);
@@ -70,7 +99,9 @@ export const createEmployee = async (req: Request, res: Response) => {
       });
     }
 
-    return res.status(500).json({ message: "No se pudo crear el empleado" });
+    return res.status(500).json({
+      message: "No se pudo crear el empleado",
+    });
   }
 };
 
@@ -112,7 +143,9 @@ export const updateEmployee = async (req: Request, res: Response) => {
       });
     }
 
-    return res.status(500).json({ message: "No se puedo actualizar la información del empleado" });
+    return res
+      .status(500)
+      .json({ message: "No se puedo actualizar la información del empleado" });
   }
 };
 
@@ -163,7 +196,9 @@ export const validateEmployee = async (req: Request, res: Response) => {
     return res.json(data);
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ message: "Ocurrió un error al validar el empleado" });
+    return res
+      .status(500)
+      .json({ message: "Ocurrió un error al validar el empleado" });
   }
 };
 
@@ -189,6 +224,8 @@ export const changePassword = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ message: "Ocurrió un error al cambiar la contraseña" });
+    return res
+      .status(500)
+      .json({ message: "Ocurrió un error al cambiar la contraseña" });
   }
 };

@@ -11,7 +11,7 @@ export const getEmployeesRepo = async (
       ...(isManagement
         ? {}
         : {
-            locationId: locationId, // 🔥 solo su sucursal
+            locationId: locationId,
           }),
     },
     select: {
@@ -47,12 +47,16 @@ export const createEmployeeRepo = async (data: Partial<Employee>) => {
       password: data.password || null,
       roleId: data.roleId!,
       locationId: data.locationId || null, 
+      numeral: data.numeral || null,
+      celular :data.celular || null
     },
     select: {
       id: true,
       name: true,
       lastName: true,
       email: true,
+      numeral: true,
+      celular: true,
       location: {
         select: {
           id: true,
@@ -109,7 +113,7 @@ export const deleteEmployeeRepo = async (id: number) => {
     where: { id },
     data: {
       isVisible: false,
-      email: Math.random().toString(36).slice(-10), // evitar conflicto unique
+      //email: Math.random().toString(36).slice(-10), // evitar conflicto unique
     },
   });
 };
