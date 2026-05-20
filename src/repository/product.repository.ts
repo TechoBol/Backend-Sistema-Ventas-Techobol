@@ -1,21 +1,8 @@
 import prisma from "../config/db";
 
-type CreateProductDTO = {
-  name: string;
-  description?: string;
-  code: string;
-  imageUrl?: string;
-  price: number;
-  finalPrice: number;
-  lineId: number;
-  brandName: string;
-};
-
-export const createProductRepo = async (data: CreateProductDTO) => {
-  return prisma.product.create({
-    data,
-  });
-};
+//////////////////////////////////////////////////////////
+// GET PRODUCTS
+//////////////////////////////////////////////////////////
 
 export const getProductsRepo = async (
   locationId: number,
@@ -23,605 +10,345 @@ export const getProductsRepo = async (
 ) => {
   if (isManagement) {
     const products = await prisma.product.findMany({
-      where: { isVisible: true },
+      where: {
+        isVisible: true,
+      },
+
       include: {
         line: true,
+
+        baseUnit: true,
+
+        productUnits: {
+          include: {
+            unit: true,
+          },
+        },
+
         inventories: {
           include: {
             location: {
-              select: { id: true, name: true },
+              select: {
+                id: true,
+                name: true,
+              },
             },
           },
         },
       },
     });
 
-    return products
-      .map((p) => ({
-        ...p,
-        stockTotal: p.inventories.reduce((acc, inv) => acc + inv.quantity, 0),
-        inventories: p.inventories.map((inv) => ({
-          locationId: inv.locationId,
-          locationName: inv.location.name,
-          quantity: inv.quantity,
-        })),
-      }))
-      .sort((a, b) => b.stockTotal - a.stockTotal);
+    return products.map((p) => ({
+      ...p,
+
+      stockTotal: p.inventories.reduce((acc, inv) => acc + inv.quantity, 0),
+    }));
   }
-
-  const products = await prisma.product.findMany({
-    where: { isVisible: true },
-    include: {
-      line: true,
-      inventories: {
-        where: { locationId },
-      },
-    },
-  });
-
-  return products.sort((a, b) => {
-    const stockA = a.inventories[0]?.quantity || 0;
-    const stockB = b.inventories[0]?.quantity || 0;
-    return stockB - stockA;
-  });
-};
-
-export const getProductByIdRepo = async (id: number) => {
-  return prisma.product.findUnique({
-    where: { id },
-    include: {
-      line: true,
-      inventories: true,
-    },
-  });
-};
-
-export const updateProductRepo = async (id: number, data: any) => {
-  const { stock, locationId, inventoryEdited, ...productData } = data;
-
-  return prisma.$transaction(async (tx) => {
-    const currentProduct = await tx.product.findUnique({
-      where: { id },
-    });
-
-    if (!currentProduct) {
-      throw new Error("Producto no encontrado");
-    }
-
-    await tx.product.update({
-      where: { id },
-      data: {
-        name: productData.name,
-        description: productData.description,
-        code: productData.code,
-        price: productData.price,
-        finalPrice: productData.finalPrice,
-        lineId: productData.lineId,
-        brandName: productData.brandName,
-      },
-    });
-    if (inventoryEdited) {
-      if (stock !== undefined && locationId) {
-        const inventory = await tx.inventory.findUnique({
-          where: {
-            productId_locationId: {
-              productId: id,
-              locationId,
-            },
-          },
-        });
-
-        if (!inventory) {
-          await tx.inventory.create({
-            data: {
-              productId: id,
-              locationId,
-
-              quantity: stock,
-
-              averageCost: productData.price,
-            },
-          });
-
-          await tx.stockMovement.create({
-            data: {
-              productId: id,
-
-              toLocationId: locationId,
-
-              quantity: stock,
-
-              type: "IN",
-
-              unitCost: productData.price,
-
-              reference: "NUEVO INGRESO",
-            },
-          });
-        } else {
-          const cantidadActual = inventory.quantity;
-
-          const costoActual = inventory.averageCost;
-
-          const totalActual = cantidadActual * costoActual;
-
-          const totalNuevo = stock * productData.price;
-
-          const nuevaCantidad = cantidadActual + stock;
-
-          const nuevoPromedio =
-            nuevaCantidad > 0
-              ? (totalActual + totalNuevo) / nuevaCantidad
-              : productData.price;
-
-          await tx.inventory.update({
-            where: {
-              productId_locationId: {
-                productId: id,
-                locationId,
-              },
-            },
-
-            data: {
-              quantity: {
-                increment: stock,
-              },
-
-              averageCost: nuevoPromedio,
-            },
-          });
-
-          await tx.stockMovement.create({
-            data: {
-              productId: id,
-
-              toLocationId: locationId,
-
-              quantity: stock,
-
-              type: "IN",
-
-              unitCost: productData.price,
-
-              reference: "REPOSICION STOCK",
-            },
-          });
-        }
-      }
-    }
-
-    return tx.product.findUnique({
-      where: { id },
-      include: {
-        line: true,
-        inventories: {
-          include: {
-            location: true,
-          },
-        },
-      },
-    });
-  });
-};
-
-export const deleteProductRepo = async (id: number) => {
-  return prisma.product.update({
-    where: { id },
-    data: { isVisible: false },
-  });
-};
-
-export const getKardexRepo = async ({
-  productId,
-  fromDate,
-  toDate,
-  locationId,
-  linea,
-  marca,
-}: {
-  productId?: number | null;
-  fromDate?: string;
-  toDate?: string;
-  locationId?: number | null;
-  linea?: number;
-  marca?: string;
-}) => {
-  console.log("📥 INPUT:", {
-    productId,
-    fromDate,
-    toDate,
-    locationId,
-  });
-
-  const parseDate = (dateStr?: string, end = false) => {
-    if (!dateStr) return null;
-
-    const d = new Date(end ? `${dateStr}T23:59:59` : `${dateStr}T00:00:00`);
-
-    return isNaN(d.getTime()) ? null : d;
-  };
-
-  const from = parseDate(fromDate);
-  const to = parseDate(toDate, true);
 
   const products = await prisma.product.findMany({
     where: {
       isVisible: true,
-
-      ...(productId && {
-        id: productId,
-      }),
-
-      ...(linea && {
-        lineId: linea,
-      }),
-
-      ...(marca &&
-        marca.trim() !== "" && {
-          brandName: {
-            contains: marca,
-            mode: "insensitive",
-          },
-        }),
     },
 
     include: {
       line: true,
-    },
-  });
 
-  const movements = await prisma.stockMovement.findMany({
-    where: {
-      ...(productId && {
-        productId,
-      }),
+      baseUnit: true,
 
-      ...(locationId && {
-        OR: [
-          {
-            fromLocationId: locationId,
-          },
-          {
-            toLocationId: locationId,
-          },
-        ],
-      }),
-
-      ...(from &&
-        to && {
-          createdAt: {
-            gte: from,
-            lte: to,
-          },
-        }),
-    },
-
-    include: {
-      product: {
+      productUnits: {
         include: {
-          line: true,
+          unit: true,
         },
       },
 
-      transfer: true,
-      fromLocation: true,
-      toLocation: true,
-    },
+      inventories: {
+        where: {
+          locationId,
+        },
 
-    orderBy: {
-      createdAt: "asc",
+        include: {
+          location: true,
+        },
+      },
     },
   });
 
-  const resultado: any[] = [];
-
-  for (const product of products) {
-    const inventory = await prisma.inventory.findMany({
-      where: {
-        productId: product.id,
-
-        ...(locationId && {
-          locationId,
-        }),
-      },
-    });
-
-    const stockActual = inventory.reduce((acc, inv) => acc + inv.quantity, 0);
-
-    const inventoryCost =
-      inventory.length > 0
-        ? inventory.reduce((acc, inv) => acc + inv.averageCost, 0) /
-          inventory.length
-        : product.price;
-
-    const movimientosProducto: any[] = [];
-
-    for (const mov of movements.filter((m) => m.productId === product.id)) {
-      let entrada = 0;
-      let salida = 0;
-
-      let detalle = "";
-
-      let codigoMovimiento = "";
-
-      if (mov.type === "IN") {
-        entrada = mov.quantity;
-
-        detalle = (mov.reference || "COMPRA / IMPORTACIÓN").toUpperCase();
-      }
-
-      if (mov.type === "OUT") {
-        salida = mov.quantity;
-
-        detalle = (mov.reference || "SALIDA").toUpperCase();
-      }
-
-      if (mov.type === "TRANSFER") {
-        const transferCode = mov.transfer?.transferCode || `TR-${mov.id}`;
-
-        const fromName = mov.fromLocation?.name?.toUpperCase() || "ORIGEN";
-
-        const toName = mov.toLocation?.name?.toUpperCase() || "DESTINO";
-
-        codigoMovimiento = transferCode;
-
-        if (locationId) {
-          if (mov.toLocationId === locationId) {
-            entrada = mov.quantity;
-
-            detalle = (
-              `TRANSFERENCIA ENTRADA ${transferCode} ` +
-              `${fromName} → ${toName}`
-            ).toUpperCase();
-          }
-
-          if (mov.fromLocationId === locationId) {
-            salida = mov.quantity;
-
-            detalle = (
-              `TRANSFERENCIA SALIDA ${transferCode} ` +
-              `${fromName} → ${toName}`
-            ).toUpperCase();
-          }
-        } else {
-          movimientosProducto.push({
-            fecha: mov.createdAt,
-
-            codigoMovimiento: transferCode,
-
-            detalle: (
-              `TRANSFERENCIA SALIDA ${transferCode} ` +
-              `${fromName} → ${toName}`
-            ).toUpperCase(),
-
-            entrada: 0,
-            salida: mov.quantity,
-
-            costoUnitario: mov.unitCost || 0,
-          });
-
-          movimientosProducto.push({
-            fecha: mov.createdAt,
-
-            codigoMovimiento: transferCode,
-
-            detalle: (
-              `TRANSFERENCIA ENTRADA ${transferCode} ` +
-              `${fromName} → ${toName}`
-            ).toUpperCase(),
-
-            entrada: mov.quantity,
-            salida: 0,
-
-            costoUnitario: mov.unitCost || 0,
-          });
-
-          continue;
-        }
-      }
-
-      movimientosProducto.push({
-        fecha: mov.createdAt,
-
-        codigoMovimiento,
-
-        detalle: detalle.toUpperCase(),
-
-        entrada,
-        salida,
-
-        costoUnitario: mov.unitCost || 0,
-      });
-    }
-
-    movimientosProducto.sort(
-      (a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime(),
-    );
-
-    if (movimientosProducto.length === 0) {
-      resultado.push({
-        producto: product.name,
-
-        code: product.code,
-
-        linea: product.line?.name || "-",
-
-        marca: product.brandName || "-",
-
-        kardex: [
-          {
-            fecha: new Date(),
-
-            codigoMovimiento: "",
-
-            detalle: "SIN MOVIMIENTOS",
-
-            entrada: 0,
-            salida: 0,
-
-            saldoCantidad: stockActual,
-
-            costoUnitario: inventoryCost,
-
-            entradaTotal: 0,
-
-            salidaTotal: 0,
-
-            saldoTotal: stockActual * inventoryCost,
-          },
-        ],
-      });
-
-      continue;
-    }
-
-    let saldoCantidad = 0;
-
-    let saldoTotal = 0;
-
-    let costoPromedio = 0;
-
-    const kardexProducto: any[] = [];
-
-    for (const mov of movimientosProducto) {
-      let costoMovimiento = Number(mov.costoUnitario || 0);
-
-      if (mov.entrada > 0 && costoMovimiento <= 0) {
-        costoMovimiento = costoPromedio;
-      }
-
-      const entradaTotal = mov.entrada * costoMovimiento;
-
-      if (mov.entrada > 0) {
-        saldoTotal += entradaTotal;
-
-        saldoCantidad += mov.entrada;
-
-        costoPromedio =
-          saldoCantidad > 0 ? saldoTotal / saldoCantidad : costoMovimiento;
-      }
-
-      let salidaTotal = 0;
-
-      if (mov.salida > 0) {
-        salidaTotal = mov.salida * costoPromedio;
-
-        saldoCantidad -= mov.salida;
-
-        saldoTotal -= salidaTotal;
-      }
-
-      kardexProducto.push({
-        fecha: mov.fecha,
-
-        codigoMovimiento: mov.codigoMovimiento || "",
-
-        detalle: mov.detalle,
-
-        entrada: mov.entrada,
-
-        salida: mov.salida,
-
-        saldoCantidad,
-
-        costoUnitario: mov.entrada > 0 ? costoMovimiento : costoPromedio,
-
-        entradaTotal,
-
-        salidaTotal,
-
-        saldoTotal,
-      });
-    }
-
-    resultado.push({
-      producto: product.name,
-
-      code: product.code,
-
-      linea: product.line?.name || "-",
-
-      marca: product.brandName || "-",
-
-      kardex: kardexProducto,
-    });
-  }
-
-  console.log("Kardex generado:", resultado.length, "productos");
-
-  return resultado;
+  return products.map((p) => ({
+    ...p,
+
+    stockTotal: p.inventories.reduce((acc, inv) => acc + inv.quantity, 0),
+  }));
 };
 
-export const getKardexRepository = async (filters: any) => {
-  const { sucursal, item, marca, linea, vendedor, fromDate, toDate } = filters;
+//////////////////////////////////////////////////////////
+// GET PRODUCT BY ID
+//////////////////////////////////////////////////////////
 
-  const sales = await prisma.saleDetail.findMany({
+export const getProductByIdRepo = async (id: number) => {
+  return prisma.product.findUnique({
     where: {
-      sale: {
-        date: {
-          gte: fromDate ? new Date(fromDate) : undefined,
-
-          lte: toDate ? new Date(`${toDate}T23:59:59.999Z`) : undefined,
-        },
-
-        locationId: sucursal ? Number(sucursal) : undefined,
-
-        employeeId: vendedor ? Number(vendedor) : undefined,
-      },
-
-      product: {
-        name: item
-          ? {
-              contains: item,
-              mode: "insensitive",
-            }
-          : undefined,
-
-        brandName: marca
-          ? {
-              contains: marca,
-              mode: "insensitive",
-            }
-          : undefined,
-
-        lineId: linea ? Number(linea) : undefined,
-      },
+      id,
     },
 
     include: {
-      product: {
+      line: true,
+
+      baseUnit: true,
+
+      productUnits: {
         include: {
-          line: true,
+          unit: true,
+        },
+      },
+
+      inventories: {
+        include: {
+          location: true,
         },
       },
     },
   });
+};
 
-  const grouped: any = {};
+//////////////////////////////////////////////////////////
+// UPDATE PRODUCT
+//////////////////////////////////////////////////////////
 
-  sales.forEach((item) => {
-    const key = item.product.id;
+export const updateProductRepo = async (id: number, data: any) => {
+  const {
+    productUnits = [],
+    applyStockUpdate = false,
+    stock = 0,
+    averageCost = 0,
+    locationId,
+    ...productData
+  } = data;
 
-    if (!grouped[key]) {
-      grouped[key] = {
-        id: item.product.id,
+  const locId = Number(locationId);
 
-        product: item.product.name,
+  if (!locId) {
+    throw new Error("locationId es requerido");
+  }
 
-        line: item.product.line?.name || "",
+  return prisma.$transaction(async (tx) => {
+    //////////////////////////////////////////////////////
+    // VALIDAR DEFAULT
+    //////////////////////////////////////////////////////
+    const defaultUnits = productUnits.filter((x: any) => x.isDefault);
 
-        brand: item.product.brandName || "",
-
-        quantity: 0,
-
-        total: 0,
-      };
+    if (defaultUnits.length !== 1) {
+      throw new Error("Debe existir una presentación por defecto");
     }
 
-    grouped[key].quantity += item.quantity;
+    const defaultPresentation = defaultUnits[0];
 
-    grouped[key].total += item.quantity * item.price;
+    //////////////////////////////////////////////////////
+    // UNIDAD BASE
+    //////////////////////////////////////////////////////
+    const baseUnit = await tx.unit.findUnique({
+      where: { code: productData.baseUnitCode },
+    });
+
+    if (!baseUnit) {
+      throw new Error("Unidad base inválida");
+    }
+
+    //////////////////////////////////////////////////////
+    // INVENTARIO (CORRECTO: UNIQUE)
+    //////////////////////////////////////////////////////
+    const inventory = await tx.inventory.findUnique({
+      where: {
+        productId_locationId: {
+          productId: id,
+          locationId: locId,
+        },
+      },
+    });
+
+    if (!inventory) {
+      throw new Error("Inventario no encontrado");
+    }
+
+    //////////////////////////////////////////////////////
+    // STOCK + COSTO PROMEDIO (CORRECTO)
+    //////////////////////////////////////////////////////
+    const oldStock = Number(inventory.quantity);
+    const oldCost = Number(inventory.averageCost);
+
+    const newStock = Number(stock);
+    const newCost = Number(averageCost);
+
+    let finalStock = oldStock;
+    let finalAverageCost = oldCost;
+
+    if (applyStockUpdate && newStock > 0) {
+      const totalStock = oldStock + newStock;
+
+      finalStock = totalStock;
+
+      finalAverageCost =
+        totalStock > 0
+          ? (oldStock * oldCost + newStock * newCost) / totalStock
+          : 0;
+    }
+
+    //////////////////////////////////////////////////////
+    // UNIDADES
+    //////////////////////////////////////////////////////
+    const unitCodes = productUnits.map((u: any) =>
+      u.unitCode.trim().toUpperCase(),
+    );
+
+    const units = await tx.unit.findMany({
+      where: {
+        code: { in: unitCodes },
+      },
+    });
+
+    if (units.length !== unitCodes.length) {
+      throw new Error("Existen unidades inválidas");
+    }
+
+    const unitMap = new Map(
+      units.map((u) => [u.code.toUpperCase(), u]),
+    );
+
+    //////////////////////////////////////////////////////
+    // ACTUALIZAR PRODUCTO
+    //////////////////////////////////////////////////////
+    await tx.product.update({
+      where: { id },
+      data: {
+        name: productData.name?.trim()?.toUpperCase(),
+        description: productData.description,
+        code: productData.code?.trim(),
+        lineId: Number(productData.lineId),
+        brandName: productData.brandName,
+        baseUnitId: baseUnit.id,
+        purchasePrice: finalAverageCost,
+        salePrice: Number(defaultPresentation.salePrice),
+      },
+    });
+
+    //////////////////////////////////////////////////////
+    // UPSERT PRODUCT UNITS (SIN DELETE)
+    //////////////////////////////////////////////////////
+    const existingUnits = await tx.productUnit.findMany({
+      where: { productId: id },
+    });
+
+    const existingMap = new Map(
+      existingUnits.map((u) => [u.unitId, u]),
+    );
+
+    for (const item of productUnits) {
+      const unit = unitMap.get(
+        item.unitCode.trim().toUpperCase(),
+      );
+
+      if (!unit) {
+        throw new Error(`Unidad no encontrada: ${item.unitCode}`);
+      }
+
+      const existing = existingMap.get(unit.id);
+
+      if (existing) {
+        await tx.productUnit.update({
+          where: { id: existing.id },
+          data: {
+            equivalence: Number(item.equivalence),
+            salePrice: Number(item.salePrice),
+            purchasePrice: finalAverageCost,
+            isDefault: item.isDefault || false,
+          },
+        });
+      } else {
+        await tx.productUnit.create({
+          data: {
+            productId: id,
+            unitId: unit.id,
+            equivalence: Number(item.equivalence),
+            salePrice: Number(item.salePrice),
+            purchasePrice: finalAverageCost,
+            isDefault: item.isDefault || false,
+          },
+        });
+      }
+    }
+
+    //////////////////////////////////////////////////////
+    // INVENTARIO UPDATE
+    //////////////////////////////////////////////////////
+    await tx.inventory.update({
+      where: {
+        productId_locationId: {
+          productId: id,
+          locationId: locId,
+        },
+      },
+      data: {
+        quantity: finalStock,
+        averageCost: finalAverageCost,
+      },
+    });
+
+    //////////////////////////////////////////////////////
+    // MOVIMIENTO (IMPORTACIÓN)
+    //////////////////////////////////////////////////////
+    const defaultUnit = await tx.productUnit.findFirst({
+      where: {
+        productId: id,
+        isDefault: true,
+      },
+    });
+
+    if (applyStockUpdate && newStock > 0 && defaultUnit) {
+      await tx.stockMovement.create({
+        data: {
+          productId: id,
+          productUnitId: defaultUnit.id,
+          toLocationId: locId,
+          quantity: newStock,
+          presentationQuantity: newStock,
+          type: "IN",
+          unitCost: newCost,
+          reference: "IMPORTACIÓN",
+        },
+      });
+    }
+
+    //////////////////////////////////////////////////////
+    // RETURN FINAL
+    //////////////////////////////////////////////////////
+    return tx.product.findUnique({
+      where: { id },
+      include: {
+        line: true,
+        baseUnit: true,
+        productUnits: {
+          include: { unit: true },
+        },
+        inventories: {
+          include: { location: true },
+        },
+      },
+    });
+  }, {
+    timeout: 15000,
   });
+};
+//////////////////////////////////////////////////////////
+// DELETE PRODUCT
+//////////////////////////////////////////////////////////
 
-  return Object.values(grouped).sort((a: any, b: any) => b.total - a.total);
+export const deleteProductRepo = async (id: number) => {
+  return prisma.product.update({
+    where: {
+      id,
+    },
+
+    data: {
+      isVisible: false,
+    },
+  });
 };
