@@ -1,5 +1,3 @@
-// This is your Prisma schema file
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -9,19 +7,14 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-//////////////////////
-// 🏢 UBICACIONES
-//////////////////////
-
 model Location {
-  id        Int          @id @default(autoincrement())
-  name      String
-  type      LocationType
-  address   String?
-  isVisible Boolean      @default(true)
-
+  id           Int          @id @default(autoincrement())
+  name         String
+  type         LocationType
+  address      String?
   abbreviation String?
-  saleCounter  Int?    @default(0)
+  saleCounter  Int          @default(0)
+  isVisible    Boolean      @default(true)
 
   employees   Employee[]
   inventories Inventory[]
@@ -39,85 +32,110 @@ enum LocationType {
   BRANCH
 }
 
-//////////////////////
-// 👤 EMPLEADOS
-//////////////////////
-
 model Employee {
   id       Int     @id @default(autoincrement())
   name     String
   lastName String
   email    String? @unique
   password String?
-
-  role   Role @relation(fields: [roleId], references: [id])
-  roleId Int
+  numeral  Int?
+  celular  String?
+  role     Role    @relation(fields: [roleId], references: [id])
+  roleId   Int
 
   location   Location? @relation(fields: [locationId], references: [id])
   locationId Int?
 
-  sales Sale[]
-
   isVisible Boolean @default(true)
+
+  sales Sale[]
 
   requestedTransfers Transfer[] @relation("RequestedBy")
   approvedTransfers  Transfer[] @relation("ApprovedBy")
 }
 
 model Role {
-  id                  Int        @id @default(autoincrement())
-  name                String
+  id                  Int     @id @default(autoincrement())
+  name                String  @unique
   description         String?
-  employee            Employee[]
-  isVisible           Boolean    @default(true)
-  maxEmployeesAllowed Int        @default(1)
   level               Int?
-}
+  maxEmployeesAllowed Int     @default(1)
+  isVisible           Boolean @default(true)
 
-//////////////////////
-// 🏷️ CATEGORIZACIÓN
-//////////////////////
+  employees Employee[]
+}
 
 model Line {
-  id          Int       @id @default(autoincrement())
-  name        String    @unique
+  id          Int     @id @default(autoincrement())
+  name        String  @unique
   description String?
-  brands      Json      @default("[]")
-  isVisible   Boolean   @default(true)
-  products    Product[]
+  brands      Json?
+  isVisible   Boolean @default(true)
+
+  products Product[]
 }
 
-//////////////////////
-// 📦 PRODUCTOS
-//////////////////////
+model Unit {
+  id            Int     @id @default(autoincrement())
+  name          String  @unique
+  code          String  @unique
+  allowDecimals Boolean @default(false)
+  isVisible     Boolean @default(true)
+
+  baseProducts Product[]     @relation("BaseUnit")
+  productUnits ProductUnit[]
+}
 
 model Product {
   id          Int     @id @default(autoincrement())
   name        String
   description String?
-  barcode     String  @unique
+  code        String  @unique
   imageUrl    String?
-  price       Float
-  finalPrice  Float
   isVisible   Boolean @default(true)
 
-  // --- Relación con Línea ---
+  purchasePrice Float @default(0)
+  salePrice     Float @default(0)
+
+  allowNegativeStock Boolean @default(false)
+
+  baseUnit   Unit @relation("BaseUnit", fields: [baseUnitId], references: [id])
+  baseUnitId Int
+
   line   Line? @relation(fields: [lineId], references: [id])
   lineId Int?
 
-  // Nombre de la marca seleccionada (Texto simple)
   brandName String?
-  // --------------------------
 
+  productUnits  ProductUnit[]
   inventories   Inventory[]
   movements     StockMovement[]
   saleDetails   SaleDetail[]
   transferItems TransferItem[]
 }
 
-//////////////////////
-// 📊 INVENTARIO
-//////////////////////
+model ProductUnit {
+  id Int @id @default(autoincrement())
+
+  product   Product @relation(fields: [productId], references: [id])
+  productId Int
+
+  unit   Unit @relation(fields: [unitId], references: [id])
+  unitId Int
+
+  equivalence Float
+
+  purchasePrice Float @default(0)
+  salePrice     Float
+
+  isDefault Boolean @default(false)
+
+  saleDetails    SaleDetail[]
+  stockMovements StockMovement[]
+  transferItems  TransferItem[]
+
+  @@unique([productId, unitId])
+}
 
 model Inventory {
   id Int @id @default(autoincrement())
@@ -128,16 +146,11 @@ model Inventory {
   location   Location @relation(fields: [locationId], references: [id])
   locationId Int
 
-  quantity Int @default(0)
-
+  quantity    Float @default(0)
   averageCost Float @default(0)
 
   @@unique([productId, locationId])
 }
-
-//////////////////////
-// 🔄 MOVIMIENTOS
-//////////////////////
 
 model StockMovement {
   id Int @id @default(autoincrement())
@@ -145,40 +158,42 @@ model StockMovement {
   product   Product @relation(fields: [productId], references: [id])
   productId Int
 
+  productUnit   ProductUnit? @relation(fields: [productUnitId], references: [id])
+  productUnitId Int?
+
   fromLocation   Location? @relation("FromLocation", fields: [fromLocationId], references: [id])
   fromLocationId Int?
 
   toLocation   Location? @relation("ToLocation", fields: [toLocationId], references: [id])
   toLocationId Int?
 
-  quantity Int
+  quantity             Float
+  presentationQuantity Float?
+
+  unitCost Float @default(0)
 
   type MovementType
 
-  // 🔥 NUEVO
-  unitCost Float @default(0)
+  reference String?
 
-  // 🔥 OPCIONAL
-  reference  String?
   transfer   Transfer? @relation(fields: [transferId], references: [id])
   transferId Int?
-  createdAt  DateTime  @default(now())
+
+  createdAt DateTime @default(now())
 }
 
 enum MovementType {
   IN
   OUT
   TRANSFER
+  ADJUSTMENT
 }
 
-//////////////////////
-// 🔥 TRANSFERENCIAS (AJUSTADO)
-//////////////////////
-
 model Transfer {
-  id             Int       @id @default(autoincrement())
-  transferCode   String?
-  // 🔥 AHORA OPCIONALES (CLAVE DEL CAMBIO)
+  id Int @id @default(autoincrement())
+
+  transferCode String? @unique
+
   fromLocation   Location? @relation("FromTransfer", fields: [fromLocationId], references: [id])
   fromLocationId Int?
 
@@ -187,25 +202,22 @@ model Transfer {
 
   status TransferStatus @default(PENDING)
 
-  createdAt DateTime @default(now())
-
-  requestedById Int
   requestedBy   Employee @relation("RequestedBy", fields: [requestedById], references: [id])
+  requestedById Int
 
-  approvedById Int?
   approvedBy   Employee? @relation("ApprovedBy", fields: [approvedById], references: [id])
+  approvedById Int?
 
   approvedAt DateTime?
   executedAt DateTime?
 
-  // 🔥 OPCIONAL (RECOMENDADO)
   rejectionReason String?
+  glosa           String?
 
   items     TransferItem[]
   movements StockMovement[]
 
-  @@index([fromLocationId])
-  @@index([status])
+  createdAt DateTime @default(now())
 }
 
 model TransferItem {
@@ -217,7 +229,11 @@ model TransferItem {
   product   Product @relation(fields: [productId], references: [id])
   productId Int
 
-  quantity Int
+  productUnit   ProductUnit? @relation(fields: [productUnitId], references: [id])
+  productUnitId Int?
+
+  presentationQuantity Float?
+  quantity             Float
 }
 
 enum TransferStatus {
@@ -226,37 +242,85 @@ enum TransferStatus {
   REJECTED
 }
 
-//////////////////////
-// 💰 VENTAS
-//////////////////////
-
 model Sale {
-  id         Int      @id @default(autoincrement())
-  date       DateTime @default(now())
+  id Int @id @default(autoincrement())
+
+  date DateTime @default(now())
+
   location   Location @relation(fields: [locationId], references: [id])
   locationId Int
+
   employee   Employee @relation(fields: [employeeId], references: [id])
   employeeId Int
 
-  total Float
+  customer   Customer? @relation(fields: [customerId], references: [id])
+  customerId Int?
+
+  subtotal Float @default(0)
+  discount Float @default(0)
+  total    Float
 
   code   String?
   pdfUrl String?
 
   details SaleDetail[]
 
-  typeSale             String?
-  transactionNumber    String?
-  paymentMethodChanged Boolean? @default(false)
-  dateChanged          Boolean? @default(false)
+  typeSale          String?
+  transactionNumber String?
+
+  paymentMethodChanged Boolean @default(false)
+  dateChanged          Boolean @default(false)
+
+  status SaleStatus @default(COMPLETED)
+
+  cancelReason String?
+  cancelledAt  DateTime?
+}
+
+enum SaleStatus {
+  COMPLETED
+  CANCELLED
 }
 
 model SaleDetail {
-  id        Int     @id @default(autoincrement())
-  sale      Sale    @relation(fields: [saleId], references: [id])
-  saleId    Int
+  id Int @id @default(autoincrement())
+
+  sale   Sale @relation(fields: [saleId], references: [id])
+  saleId Int
+
   product   Product @relation(fields: [productId], references: [id])
   productId Int
-  quantity  Int
-  price     Float
+
+  productUnit   ProductUnit @relation(fields: [productUnitId], references: [id])
+  productUnitId Int
+
+  unitName    String
+  equivalence Float
+
+  quantity  Float
+  unitPrice Float
+
+  itemDiscount Float @default(0)
+
+  subtotal Float
+}
+
+model Customer {
+  id Int @id @default(autoincrement())
+
+  name String
+
+  nitCi        String? @unique
+  businessName String?
+  code         String? @unique
+
+  phone   String?
+  address String?
+
+  latitude  Float?
+  longitude Float?
+
+  isVisible Boolean @default(true)
+
+  sales Sale[]
 }

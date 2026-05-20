@@ -10,11 +10,18 @@ config();
 export const signIn = async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
+
     if (!email || !password) {
-      return res.status(400).json({ message: "email and password required" });
+      return res.status(400).json({
+        message: "email and password required",
+      });
     }
-    const employee = await prisma.employee.findUnique({
-      where: { email },
+
+    const employee = await prisma.employee.findFirst({
+      where: {
+        email,
+        isVisible: true,
+      },
       select: {
         id: true,
         name: true,
@@ -24,7 +31,7 @@ export const signIn = async (req: Request, res: Response) => {
         role: {
           select: {
             name: true,
-            level: true
+            level: true,
           },
         },
         location: {
@@ -38,27 +45,41 @@ export const signIn = async (req: Request, res: Response) => {
         },
       },
     });
+
     if (!employee) {
-      return res.status(400).json({ message: "user not found" });
+      return res.status(400).json({
+        message: "user not found",
+      });
     }
+
     const passwordValid = await bcrypt.compare(
       password,
       employee.password as string,
     );
+
     if (!passwordValid) {
-      return res.status(400).json({ message: "incorrect password" });
+      return res.status(400).json({
+        message: "incorrect password",
+      });
     }
-    const token = jwt.sign(
-      {
-        id: employee.id,
-        email: employee.email,
-        role: employee.role?.name,
-        level: employee.role?.level,
-        locationId: employee.location ? employee.location.id : null,
-      },
-      process.env.JWTSECRET as string,
-    );
-    
+
+    // 🔥 PAYLOAD
+    const payload = {
+      id: employee.id,
+      email: employee.email,
+      role: employee.role?.name,
+      level: employee.role?.level,
+      locationId: employee.location ? employee.location.id : null,
+    };
+
+    // 🔥 TOKEN
+    const token =
+      employee.role?.level === 1
+        ? jwt.sign(payload, process.env.JWTSECRET as string)
+        : jwt.sign(payload, process.env.JWTSECRET as string, {
+            expiresIn: "1d",
+          });
+
     return res.json({
       id: employee.id,
       name: employee.name,
@@ -70,12 +91,13 @@ export const signIn = async (req: Request, res: Response) => {
       token,
     });
   } catch (err) {
+    console.log(err);
+
     return res.status(500).json({
       message: "internal error",
     });
   }
 };
-
 export const validateToken = async (req: Request, res: Response) => {
   try {
     const response = jwt.verify(
