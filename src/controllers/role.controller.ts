@@ -13,7 +13,7 @@ export const getRoles = async (_: Request, res: Response) => {
 };
 
 export const createRole = async (req: Request, res: Response) => {
-  const { name, description, maxEmployeesAllowed } = req.body;
+  const { name, description, level } = req.body;
 
   if (!name) {
     return res.status(400).json({ message: "El nombre es obligatorio" });
@@ -22,7 +22,7 @@ export const createRole = async (req: Request, res: Response) => {
   const data = await createRoleRepo({
     name,
     description,
-    maxEmployeesAllowed,
+    level,
   });
 
   return res.json(data);
