@@ -13,7 +13,7 @@ export const createRoleRepo = async (data: any) => {
     data: {
       name: data.name,
       description: data.description,
-      level: data.maxEmployeesAllowed || 1,
+      level: data.level || 1,
     },
   });
 };
@@ -24,7 +24,7 @@ export const updateRoleRepo = async (id: number, data: any) => {
     data: {
       name: data.name,
       description: data.description,
-      level: data.maxEmployeesAllowed,
+      level: data.level,
     },
   });
 };

@@ -123,7 +123,7 @@ export const updateEmployee = async (req: Request, res: Response) => {
       return res.status(400).json({ message: "id inválido" });
     }
 
-    const { name, lastName, email, roleId, locationId, password } = req.body;
+    const { name, lastName, email, roleId, locationId, password, numeral, celular } = req.body;
 
     let hashedPassword;
     if (password) {
@@ -137,6 +137,8 @@ export const updateEmployee = async (req: Request, res: Response) => {
       email,
       roleId,
       locationId,
+      numeral,
+      celular,
       ...(hashedPassword && { password: hashedPassword }),
     });
 
