@@ -178,6 +178,8 @@ model StockMovement {
 
   transfer   Transfer? @relation(fields: [transferId], references: [id])
   transferId Int?
+
+  createdAt DateTime @default(now())
 }
 
 enum MovementType {
@@ -214,6 +216,8 @@ model Transfer {
 
   items     TransferItem[]
   movements StockMovement[]
+
+  createdAt DateTime @default(now())
 }
 
 model TransferItem {

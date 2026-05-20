@@ -10,6 +10,7 @@ import customerRoute from '../routes/customer.routes'
 import locationRoute from '../routes/location.routes'
 import employeeRoute from '../routes/employee.routes'
 import roleRoute from '../routes/role.routes'
+import transferRoute from '../routes/transferencias.routes'
 
 import { verifyToken } from '../middleware/auth.middleware'
 
@@ -29,5 +30,6 @@ app.use('/api/customer',verifyToken, customerRoute)
 app.use('/api/location',verifyToken, locationRoute)
 app.use('/api/employee',verifyToken, employeeRoute)
 app.use('/api/role',verifyToken, roleRoute)
+app.use('/api/transfer',verifyToken, transferRoute)
 
 export default app
