@@ -271,10 +271,10 @@ model Sale {
   paymentMethodChanged Boolean @default(false)
   dateChanged          Boolean @default(false)
 
-  status SaleStatus @default(COMPLETED)
-
-  cancelReason String?
-  cancelledAt  DateTime?
+  status        SaleStatus @default(COMPLETED)
+  cancelReason  String?
+  cancelledAt   DateTime?
+  cancelledById Int?
 }
 
 enum SaleStatus {
