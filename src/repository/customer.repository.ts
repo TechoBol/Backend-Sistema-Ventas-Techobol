@@ -1,14 +1,27 @@
 import prisma from '../config/db'
 
 export const getCustomers = async () => {
-  return await prisma.customer.findMany({
-    where: {
-      isVisible: true,
+ return await prisma.customer.findMany({
+  where: {
+    isVisible: true,
+  },
+
+  include: {
+    addresses: {
+      where: {
+        isVisible: true,
+      },
+
+      orderBy: {
+        isPrimary: "desc",
+      },
     },
-    orderBy: {
-      id: 'asc',
-    },
-  })
+  },
+
+  orderBy: {
+    id: "asc",
+  },
+});
 }
 
 export const getCustomerById = async (id: number) => {

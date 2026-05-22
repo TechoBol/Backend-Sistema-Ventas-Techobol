@@ -275,6 +275,15 @@ model Sale {
   cancelReason  String?
   cancelledAt   DateTime?
   cancelledById Int?
+
+  customerAddress   CustomerAddress? @relation(fields: [customerAddressId], references: [id])
+  customerAddressId Int?
+
+  customerAddressSnapshot String?
+
+  customerLatitudeSnapshot Float?
+
+  customerLongitudeSnapshot Float?
 }
 
 enum SaleStatus {
@@ -314,13 +323,35 @@ model Customer {
   businessName String?
   code         String? @unique
 
-  phone   String?
-  address String?
+  phone String?
+
+  addresses CustomerAddress[]
+
+  isVisible Boolean @default(true)
+
+  sales Sale[]
+}
+
+model CustomerAddress {
+  id Int @id @default(autoincrement())
+
+  customer   Customer @relation(fields: [customerId], references: [id])
+  customerId Int
+
+  label String?
+
+  address String
 
   latitude  Float?
   longitude Float?
 
+  reference String?
+
+  isPrimary Boolean @default(false)
+
   isVisible Boolean @default(true)
+
+  createdAt DateTime @default(now())
 
   sales Sale[]
 }

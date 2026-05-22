@@ -48,9 +48,7 @@ export const createSale = async (req: Request, res: Response) => {
             locationId,
           );
 
-          const realQuantity =
-            Number(item.quantity) *
-            Number(item.equivalence);
+          const realQuantity = Number(item.quantity) * Number(item.equivalence);
 
           if (!inventory || inventory.quantity < realQuantity) {
             throw new Error(
@@ -79,16 +77,28 @@ export const createSale = async (req: Request, res: Response) => {
 
         let customerId: number | null = null;
 
-        if (customer?.nitCi) {
-          const existingCustomer = await tx.customer.findUnique({
-            where: {
-              nitCi: customer.nitCi,
-            },
-          });
+        let customerAddressId: number | null = null;
 
-          if (existingCustomer) {
-            customerId = existingCustomer.id;
-          } else {
+        if (customer?.nitCi || customer?.name) {
+          ////////////////////////////////////////////////////
+          // 🔥 BUSCAR CLIENTE
+          ////////////////////////////////////////////////////
+
+          let existingCustomer = null;
+
+          if (customer?.nitCi) {
+            existingCustomer = await tx.customer.findUnique({
+              where: {
+                nitCi: customer.nitCi,
+              },
+            });
+          }
+
+          ////////////////////////////////////////////////////
+          // 🔥 CREAR CLIENTE
+          ////////////////////////////////////////////////////
+
+          if (!existingCustomer) {
             const generateCustomerCode = (length = 8) => {
               const chars =
                 "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -120,7 +130,11 @@ export const createSale = async (req: Request, res: Response) => {
               exists = !!existingCode;
             }
 
-            const newCustomer = await tx.customer.create({
+            //////////////////////////////////////////////////
+            // 🔥 CUSTOMER
+            //////////////////////////////////////////////////
+
+            existingCustomer = await tx.customer.create({
               data: {
                 name: customer.name,
 
@@ -131,27 +145,82 @@ export const createSale = async (req: Request, res: Response) => {
                 businessName: customer.businessName,
 
                 phone: customer.phone,
-
-                address: customer.address,
-
-                latitude: customer.latitude,
-
-                longitude: customer.longitude,
               },
             });
 
-            customerId = newCustomer.id;
+            //////////////////////////////////////////////////
+            // 🔥 PRIMERA DIRECCION
+            //////////////////////////////////////////////////
+
+            if (customer.address) {
+              const newAddress = await tx.customerAddress.create({
+                data: {
+                  customerId: existingCustomer.id,
+
+                  address: customer.address,
+
+                  latitude: customer.latitude,
+
+                  longitude: customer.longitude,
+
+                  isPrimary: true,
+                },
+              });
+
+              customerAddressId = newAddress.id;
+            }
+          } else {
+            //////////////////////////////////////////////////
+            // 🔥 CLIENTE EXISTENTE
+            //////////////////////////////////////////////////
+
+            customerId = existingCustomer.id;
+
+            //////////////////////////////////////////////////
+            // 🔥 BUSCAR DIRECCION
+            //////////////////////////////////////////////////
+
+            if (customer.address) {
+              const existingAddress = await tx.customerAddress.findFirst({
+                where: {
+                  customerId: existingCustomer.id,
+
+                  address: customer.address,
+                },
+              });
+
+              //////////////////////////////////////////////////
+              // 🔥 SI NO EXISTE -> CREAR
+              //////////////////////////////////////////////////
+
+              if (!existingAddress) {
+                const newAddress = await tx.customerAddress.create({
+                  data: {
+                    customerId: existingCustomer.id,
+
+                    address: customer.address,
+
+                    latitude: customer.latitude,
+
+                    longitude: customer.longitude,
+                  },
+                });
+
+                customerAddressId = newAddress.id;
+              } else {
+                customerAddressId = existingAddress.id;
+              }
+            }
           }
+
+          customerId = existingCustomer.id;
         }
 
         //////////////////////////////////////////////////////
         // 🔥 INCREMENTAR CONTADOR
         //////////////////////////////////////////////////////
 
-        const location = await incrementLocationCounterRepo(
-          tx,
-          locationId,
-        );
+        const location = await incrementLocationCounterRepo(tx, locationId);
 
         const saleNumber = location.saleCounter;
 
@@ -162,8 +231,7 @@ export const createSale = async (req: Request, res: Response) => {
         //////////////////////////////////////////////////////
 
         const totalDiscount = products.reduce(
-          (acc: number, item: any) =>
-            acc + Number(item.itemDiscount || 0),
+          (acc: number, item: any) => acc + Number(item.itemDiscount || 0),
           0,
         );
 
@@ -177,6 +245,14 @@ export const createSale = async (req: Request, res: Response) => {
           locationId,
 
           customerId,
+
+          customerAddressId,
+
+          customerAddressSnapshot: customer.address,
+
+          customerLatitudeSnapshot: customer.latitude,
+
+          customerLongitudeSnapshot: customer.longitude,
 
           subtotal,
 
@@ -198,19 +274,13 @@ export const createSale = async (req: Request, res: Response) => {
         //////////////////////////////////////////////////////
 
         for (const item of products) {
-          const product = await getProductRepo(
-            tx,
-            item.productId,
-          );
+          const product = await getProductRepo(tx, item.productId);
 
           if (!product) {
             throw new Error("Producto no encontrado");
           }
 
-          const productUnit = await getProductUnitRepo(
-            tx,
-            item.productUnitId,
-          );
+          const productUnit = await getProductUnitRepo(tx, item.productUnitId);
 
           if (!productUnit) {
             throw new Error("Unidad no encontrada");
@@ -230,9 +300,7 @@ export const createSale = async (req: Request, res: Response) => {
           // 🔥 CANTIDAD REAL
           ////////////////////////////////////////////////////
 
-          const realQuantity =
-            Number(item.quantity) *
-            Number(item.equivalence);
+          const realQuantity = Number(item.quantity) * Number(item.equivalence);
 
           ////////////////////////////////////////////////////
           // 🔥 PRECIOS
@@ -240,13 +308,10 @@ export const createSale = async (req: Request, res: Response) => {
 
           const unitPrice = Number(productUnit.salePrice);
 
-          const itemDiscount = Number(
-            item.itemDiscount || 0,
-          );
+          const itemDiscount = Number(item.itemDiscount || 0);
 
           const detailSubtotal =
-            unitPrice * Number(item.quantity) -
-            itemDiscount;
+            unitPrice * Number(item.quantity) - itemDiscount;
 
           ////////////////////////////////////////////////////
           // 🔥 SALE DETAIL
@@ -300,9 +365,7 @@ export const createSale = async (req: Request, res: Response) => {
 
             type: "OUT",
 
-            unitCost:
-              inventory.averageCost ||
-              product.purchasePrice,
+            unitCost: inventory.averageCost || product.purchasePrice,
 
             reference: `VENTA ${code}`,
           });
