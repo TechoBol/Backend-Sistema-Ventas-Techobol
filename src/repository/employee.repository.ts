@@ -19,6 +19,8 @@ export const getEmployeesRepo = async (
       name: true,
       lastName: true,
       email: true,
+      numeral: true,
+      celular: true,
       location: {
         select: {
           id: true,
@@ -85,6 +87,8 @@ export const updateEmployeeRepo = async (
       email: data.email,
       roleId: data.roleId,
       locationId: data.locationId ?? null,
+      numeral: data.numeral ?? null,
+      celular: data.celular ?? null,
       ...(data.password && { password: data.password }), 
     },
     select: {
@@ -92,6 +96,8 @@ export const updateEmployeeRepo = async (
       name: true,
       lastName: true,
       email: true,
+      numeral: true,
+      celular: true,
       location: {
         select: {
           id: true,

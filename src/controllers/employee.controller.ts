@@ -34,9 +34,15 @@ export const getEmployees = async (req: Request, res: Response) => {
 // CREATE
 //////////////////////////////
 
-const generatePassword = (name: string, lastName: string, numeral: number): string => {
+const generatePassword = (
+  name: string,
+  lastName: string,
+  numeral: number,
+): string => {
   // primeras 3 letras apellido
-  const lastNamePart = lastName.trim().substring(0, 3).toLowerCase();
+  const lastNamePart =
+    lastName.trim().substring(0, 1).toUpperCase() +
+    lastName.trim().substring(1, 3).toLowerCase();
 
   // primeras 3 letras nombre
   const namePart = name.trim().substring(0, 3).toLowerCase();
@@ -52,8 +58,8 @@ const generatePassword = (name: string, lastName: string, numeral: number): stri
 
 export const createEmployee = async (req: Request, res: Response) => {
   try {
-    const { name, lastName, email, roleId, locationId, numeral ,
-      celular } = req.body;
+    const { name, lastName, email, roleId, locationId, numeral, celular } =
+      req.body;
 
     // VALIDACIÓN
     if (!name || !lastName || !roleId || !email || !numeral || !celular) {
@@ -63,7 +69,7 @@ export const createEmployee = async (req: Request, res: Response) => {
     }
 
     // GENERAR PASSWORD
-    const generatedPassword = generatePassword(name, lastName,numeral);
+    const generatedPassword = generatePassword(name, lastName, numeral);
 
     // HASHEAR
     const saltRounds = 10;
@@ -79,13 +85,14 @@ export const createEmployee = async (req: Request, res: Response) => {
       roleId,
       locationId,
       numeral,
-      celular
+      celular,
     });
 
     // ENVIAR CORREO
     await sendEmployeeCredentials({
       email,
-      name,lastName,
+      name,
+      lastName,
       password: generatedPassword,
     });
 
@@ -116,7 +123,7 @@ export const updateEmployee = async (req: Request, res: Response) => {
       return res.status(400).json({ message: "id inválido" });
     }
 
-    const { name, lastName, email, roleId, locationId, password } = req.body;
+    const { name, lastName, email, roleId, locationId, password, numeral, celular } = req.body;
 
     let hashedPassword;
     if (password) {
@@ -130,6 +137,8 @@ export const updateEmployee = async (req: Request, res: Response) => {
       email,
       roleId,
       locationId,
+      numeral,
+      celular,
       ...(hashedPassword && { password: hashedPassword }),
     });
 
