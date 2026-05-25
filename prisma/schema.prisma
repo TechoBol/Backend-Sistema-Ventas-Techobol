@@ -91,16 +91,13 @@ model Product {
   name        String
   description String?
   code        String  @unique
-  imageUrl    String?
   isVisible   Boolean @default(true)
 
-  purchasePrice Float @default(0)
-  salePrice     Float @default(0)
-
-  allowNegativeStock Boolean @default(false)
-
-  baseUnit   Unit @relation("BaseUnit", fields: [baseUnitId], references: [id])
-  baseUnitId Int
+  purchasePrice      Float @default(0)
+  salePrice          Float @default(0)
+  porcentajeGanancia Float @default(50)
+  baseUnit           Unit  @relation("BaseUnit", fields: [baseUnitId], references: [id])
+  baseUnitId         Int
 
   line   Line? @relation(fields: [lineId], references: [id])
   lineId Int?
@@ -281,8 +278,7 @@ model Sale {
 
   customerAddressSnapshot String?
 
-  customerLatitudeSnapshot Float?
-
+  customerLatitudeSnapshot  Float?
   customerLongitudeSnapshot Float?
 }
 
@@ -317,19 +313,27 @@ model SaleDetail {
 model Customer {
   id Int @id @default(autoincrement())
 
-  name String
-
+  name         String
   nitCi        String? @unique
   businessName String?
   code         String? @unique
+  phone        String?
 
-  phone String?
+  // ─── Campos CRM ───
+  whatsapp              String?
+  occupation            String?
+  originChannel         String?
+  favoritePaymentMethod String?
+  reserveAmount         Float    @default(0)
+  purchaseFrequencyDays Int?
+  createdAt             DateTime @default(now())
+  // ──────────────────
 
-  addresses CustomerAddress[]
-
-  isVisible Boolean @default(true)
-
-  sales Sale[]
+  addresses  CustomerAddress[]
+  isVisible  Boolean           @default(true)
+  sales      Sale[]
+  activities Activity[]
+  notes      Note[]
 }
 
 model CustomerAddress {
@@ -354,4 +358,21 @@ model CustomerAddress {
   createdAt DateTime @default(now())
 
   sales Sale[]
+}
+
+model Activity {
+  id          Int      @id @default(autoincrement())
+  customerId  Int
+  customer    Customer @relation(fields: [customerId], references: [id])
+  type        String
+  description String
+  createdAt   DateTime @default(now())
+}
+
+model Note {
+  id         Int      @id @default(autoincrement())
+  customerId Int
+  customer   Customer @relation(fields: [customerId], references: [id])
+  content    String
+  createdAt  DateTime @default(now())
 }
