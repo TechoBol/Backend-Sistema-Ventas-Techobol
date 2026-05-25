@@ -93,11 +93,11 @@ model Product {
   code        String  @unique
   isVisible   Boolean @default(true)
 
-  purchasePrice Float @default(0)
-  salePrice     Float @default(0)
-
-  baseUnit   Unit @relation("BaseUnit", fields: [baseUnitId], references: [id])
-  baseUnitId Int
+  purchasePrice      Float @default(0)
+  salePrice          Float @default(0)
+  porcentajeGanancia Float @default(50)
+  baseUnit           Unit  @relation("BaseUnit", fields: [baseUnitId], references: [id])
+  baseUnitId         Int
 
   line   Line? @relation(fields: [lineId], references: [id])
   lineId Int?
