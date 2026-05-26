@@ -13,6 +13,10 @@ const accountSocketInstance = (io: io.Server) => {
     socket.on("newTranfer", (transfer) => {
       io.emit("transfer", transfer);
     });
+
+    socket.on("updateProductMargin", (product) => {
+      io.emit("updateProductMargin", product);
+    });
   });
 };
 
