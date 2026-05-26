@@ -101,13 +101,15 @@ model Product {
   line   Line? @relation(fields: [lineId], references: [id])
   lineId Int?
 
-  brandName String?
-
-  productUnits  ProductUnit[]
-  inventories   Inventory[]
-  movements     StockMovement[]
-  saleDetails   SaleDetail[]
-  transferItems TransferItem[]
+  brandName         String?
+  quantityDiscount  Float               @default(10)
+  bossDiscount      Float               @default(25)
+  productUnits      ProductUnit[]
+  inventories       Inventory[]
+  movements         StockMovement[]
+  saleDetails       SaleDetail[]
+  transferItems     TransferItem[]
+  ImportacionDetail ImportacionDetail[]
 }
 
 model ProductUnit {
@@ -126,9 +128,10 @@ model ProductUnit {
 
   isDefault Boolean @default(false)
 
-  saleDetails    SaleDetail[]
-  stockMovements StockMovement[]
-  transferItems  TransferItem[]
+  saleDetails       SaleDetail[]
+  stockMovements    StockMovement[]
+  transferItems     TransferItem[]
+  ImportacionDetail ImportacionDetail[]
 
   @@unique([productId, unitId])
 }
@@ -374,4 +377,41 @@ model Note {
   customer   Customer @relation(fields: [customerId], references: [id])
   content    String
   createdAt  DateTime @default(now())
+}
+
+model Importacion {
+  id Int @id @default(autoincrement())
+
+  code String @unique
+
+  supplier String
+
+  date DateTime
+
+  total Float @default(0)
+
+  notes String?
+
+  createdAt DateTime @default(now())
+
+  details ImportacionDetail[]
+}
+
+model ImportacionDetail {
+  id Int @id @default(autoincrement())
+
+  importacion   Importacion @relation(fields: [importacionId], references: [id])
+  importacionId Int
+
+  product   Product @relation(fields: [productId], references: [id])
+  productId Int
+
+  productUnit   ProductUnit? @relation(fields: [productUnitId], references: [id])
+  productUnitId Int?
+
+  quantity Float
+
+  unitCost Float
+
+  subtotal Float
 }

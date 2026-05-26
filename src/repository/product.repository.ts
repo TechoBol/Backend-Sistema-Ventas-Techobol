@@ -1280,7 +1280,7 @@ export const getKardexRepository = async (body: any) => {
 
       total: Number(item.total || 0),
     });
-    
+
     groupedProducts[key].subtotal = round(
       groupedProducts[key].subtotal + Number(item.subtotal || 0),
     );
@@ -1439,7 +1439,12 @@ export const getKardexRepository = async (body: any) => {
 
 export const updateMargenProductRepo = async (
   id: number,
+
   porcentajeGanancia: number,
+
+  quantityDiscount: number,
+
+  bossDiscount: number,
 ) => {
   return prisma.$transaction(async (tx) => {
     //////////////////////////////////////////////////////
@@ -1477,7 +1482,8 @@ export const updateMargenProductRepo = async (
     //////////////////////////////////////////////////////
 
     const newSalePrice =
-      costWithIVA * (1 + Number(porcentajeGanancia || 0) / 100);
+      costWithIVA *
+      (1 + Number(porcentajeGanancia || 0) / 100);
 
     //////////////////////////////////////////////////////
     // REDONDEAR
@@ -1495,7 +1501,14 @@ export const updateMargenProductRepo = async (
       },
 
       data: {
-        porcentajeGanancia: Number(porcentajeGanancia),
+        porcentajeGanancia:
+          Number(porcentajeGanancia),
+
+        quantityDiscount:
+          Number(quantityDiscount),
+
+        bossDiscount:
+          Number(bossDiscount),
 
         salePrice: roundedSalePrice,
       },
@@ -1506,19 +1519,23 @@ export const updateMargenProductRepo = async (
     //////////////////////////////////////////////////////
 
     for (const unit of product.productUnits) {
-      const equivalence = Number(unit.equivalence || 1);
+      const equivalence = Number(
+        unit.equivalence || 1,
+      );
 
       ////////////////////////////////////////////////////
       // PRECIO PRESENTACIÓN
       ////////////////////////////////////////////////////
 
-      const unitSalePrice = newSalePrice * equivalence;
+      const unitSalePrice =
+        newSalePrice * equivalence;
 
       ////////////////////////////////////////////////////
       // REDONDEAR
       ////////////////////////////////////////////////////
 
-      const roundedUnitPrice = Math.round(unitSalePrice);
+      const roundedUnitPrice =
+        Math.round(unitSalePrice);
 
       ////////////////////////////////////////////////////
       // UPDATE
