@@ -10,6 +10,7 @@ import {
   deleteProductRepo,
   getKardexRepository,
   getKardexRepo,
+  updateMargenProductRepo,
 } from "../repository/product.repository";
 
 //////////////////////////////////////////////////////////
@@ -423,6 +424,65 @@ export const getKardexPro = async (
       message:
         error.message ||
         "Error obteniendo kardex",
+    });
+  }
+};
+
+export const updateMargenProduct = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const id = Number(req.params.id);
+
+    const { porcentajeGanancia } = req.body;
+
+    //////////////////////////////////////////////////////
+    // VALIDACIONES
+    //////////////////////////////////////////////////////
+
+    if (isNaN(id)) {
+      return res.status(400).json({
+        message: "ID inválido",
+      });
+    }
+
+    if (
+      porcentajeGanancia === undefined ||
+      porcentajeGanancia === null
+    ) {
+      return res.status(400).json({
+        message:
+          "porcentajeGanancia es requerido",
+      });
+    }
+
+    //////////////////////////////////////////////////////
+    // UPDATE
+    //////////////////////////////////////////////////////
+
+    const product =
+      await updateMargenProductRepo(
+        id,
+        Number(porcentajeGanancia),
+      );
+
+    return res.status(200).json({
+      message:
+        "Margen actualizado correctamente",
+
+      product,
+    });
+  } catch (error: any) {
+    console.error(
+      "UPDATE MARGEN ERROR:",
+      error,
+    );
+
+    return res.status(500).json({
+      message:
+        error.message ||
+        "No se pudo actualizar el margen",
     });
   }
 };
