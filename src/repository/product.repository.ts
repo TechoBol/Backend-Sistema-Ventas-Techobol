@@ -130,212 +130,388 @@ export const updateProductRepo = async (id: number, data: any) => {
     throw new Error("locationId es requerido");
   }
 
-  return prisma.$transaction(async (tx) => {
-    //////////////////////////////////////////////////////
-    // VALIDAR DEFAULT
-    //////////////////////////////////////////////////////
-    const defaultUnits = productUnits.filter((x: any) => x.isDefault);
+  return prisma.$transaction(
+    async (tx) => {
+      //////////////////////////////////////////////////////
+      // VALIDAR DEFAULT
+      //////////////////////////////////////////////////////
 
-    if (defaultUnits.length !== 1) {
-      throw new Error("Debe existir una presentación por defecto");
-    }
+      const defaultUnits = productUnits.filter((x: any) => x.isDefault);
 
-    const defaultPresentation = defaultUnits[0];
-
-    //////////////////////////////////////////////////////
-    // UNIDAD BASE
-    //////////////////////////////////////////////////////
-    const baseUnit = await tx.unit.findUnique({
-      where: { code: productData.baseUnitCode },
-    });
-
-    if (!baseUnit) {
-      throw new Error("Unidad base inválida");
-    }
-
-    //////////////////////////////////////////////////////
-    // INVENTARIO (CORRECTO: UNIQUE)
-    //////////////////////////////////////////////////////
-    const inventory = await tx.inventory.findUnique({
-      where: {
-        productId_locationId: {
-          productId: id,
-          locationId: locId,
-        },
-      },
-    });
-
-    if (!inventory) {
-      throw new Error("Inventario no encontrado");
-    }
-
-    //////////////////////////////////////////////////////
-    // STOCK + COSTO PROMEDIO (CORRECTO)
-    //////////////////////////////////////////////////////
-    const oldStock = Number(inventory.quantity);
-    const oldCost = Number(inventory.averageCost);
-
-    const newStock = Number(stock);
-    const newCost = Number(averageCost);
-
-    let finalStock = oldStock;
-    let finalAverageCost = oldCost;
-
-    if (applyStockUpdate && newStock > 0) {
-      const totalStock = oldStock + newStock;
-
-      finalStock = totalStock;
-
-      finalAverageCost =
-        totalStock > 0
-          ? (oldStock * oldCost + newStock * newCost) / totalStock
-          : 0;
-    }
-
-    //////////////////////////////////////////////////////
-    // UNIDADES
-    //////////////////////////////////////////////////////
-    const unitCodes = productUnits.map((u: any) =>
-      u.unitCode.trim().toUpperCase(),
-    );
-
-    const units = await tx.unit.findMany({
-      where: {
-        code: { in: unitCodes },
-      },
-    });
-
-    if (units.length !== unitCodes.length) {
-      throw new Error("Existen unidades inválidas");
-    }
-
-    const unitMap = new Map(
-      units.map((u) => [u.code.toUpperCase(), u]),
-    );
-
-    //////////////////////////////////////////////////////
-    // ACTUALIZAR PRODUCTO
-    //////////////////////////////////////////////////////
-    await tx.product.update({
-      where: { id },
-      data: {
-        name: productData.name?.trim()?.toUpperCase(),
-        description: productData.description,
-        code: productData.code?.trim(),
-        lineId: Number(productData.lineId),
-        brandName: productData.brandName,
-        baseUnitId: baseUnit.id,
-        purchasePrice: finalAverageCost,
-        salePrice: Number(defaultPresentation.salePrice),
-      },
-    });
-
-    //////////////////////////////////////////////////////
-    // UPSERT PRODUCT UNITS (SIN DELETE)
-    //////////////////////////////////////////////////////
-    const existingUnits = await tx.productUnit.findMany({
-      where: { productId: id },
-    });
-
-    const existingMap = new Map(
-      existingUnits.map((u) => [u.unitId, u]),
-    );
-
-    for (const item of productUnits) {
-      const unit = unitMap.get(
-        item.unitCode.trim().toUpperCase(),
-      );
-
-      if (!unit) {
-        throw new Error(`Unidad no encontrada: ${item.unitCode}`);
+      if (defaultUnits.length !== 1) {
+        throw new Error("Debe existir una presentación por defecto");
       }
 
-      const existing = existingMap.get(unit.id);
+      //////////////////////////////////////////////////////
+      // UNIDAD BASE
+      //////////////////////////////////////////////////////
 
-      if (existing) {
-        await tx.productUnit.update({
-          where: { id: existing.id },
-          data: {
-            equivalence: Number(item.equivalence),
-            salePrice: Number(item.salePrice),
-            purchasePrice: finalAverageCost,
-            isDefault: item.isDefault || false,
-          },
-        });
-      } else {
-        await tx.productUnit.create({
-          data: {
-            productId: id,
-            unitId: unit.id,
-            equivalence: Number(item.equivalence),
-            salePrice: Number(item.salePrice),
-            purchasePrice: finalAverageCost,
-            isDefault: item.isDefault || false,
-          },
-        });
-      }
-    }
-
-    //////////////////////////////////////////////////////
-    // INVENTARIO UPDATE
-    //////////////////////////////////////////////////////
-    await tx.inventory.update({
-      where: {
-        productId_locationId: {
-          productId: id,
-          locationId: locId,
-        },
-      },
-      data: {
-        quantity: finalStock,
-        averageCost: finalAverageCost,
-      },
-    });
-
-    //////////////////////////////////////////////////////
-    // MOVIMIENTO (IMPORTACIÓN)
-    //////////////////////////////////////////////////////
-    const defaultUnit = await tx.productUnit.findFirst({
-      where: {
-        productId: id,
-        isDefault: true,
-      },
-    });
-
-    if (applyStockUpdate && newStock > 0 && defaultUnit) {
-      await tx.stockMovement.create({
-        data: {
-          productId: id,
-          productUnitId: defaultUnit.id,
-          toLocationId: locId,
-          quantity: newStock,
-          presentationQuantity: newStock,
-          type: "IN",
-          unitCost: newCost,
-          reference: "IMPORTACIÓN",
+      const baseUnit = await tx.unit.findUnique({
+        where: {
+          code: productData.baseUnitCode,
         },
       });
-    }
 
-    //////////////////////////////////////////////////////
-    // RETURN FINAL
-    //////////////////////////////////////////////////////
-    return tx.product.findUnique({
-      where: { id },
-      include: {
-        line: true,
-        baseUnit: true,
-        productUnits: {
-          include: { unit: true },
+      if (!baseUnit) {
+        throw new Error("Unidad base inválida");
+      }
+
+      //////////////////////////////////////////////////////
+      // PRODUCTO ACTUAL
+      //////////////////////////////////////////////////////
+
+      const currentProduct = await tx.product.findUnique({
+        where: {
+          id,
         },
-        inventories: {
-          include: { location: true },
+      });
+
+      if (!currentProduct) {
+        throw new Error("Producto no encontrado");
+      }
+
+      //////////////////////////////////////////////////////
+      // INVENTARIO SUCURSAL
+      //////////////////////////////////////////////////////
+
+      const inventory = await tx.inventory.findUnique({
+        where: {
+          productId_locationId: {
+            productId: id,
+            locationId: locId,
+          },
         },
-      },
-    });
-  }, {
-    timeout: 15000,
-  });
+      });
+
+      if (!inventory) {
+        throw new Error("Inventario no encontrado");
+      }
+
+      //////////////////////////////////////////////////////
+      // STOCK + COSTO LOCAL
+      //////////////////////////////////////////////////////
+
+      const oldStock = Number(inventory.quantity || 0);
+
+      const oldCost = Number(inventory.averageCost || 0);
+
+      const newStock = Number(stock || 0);
+
+      const newCost = Number(averageCost || 0);
+
+      let finalStock = oldStock;
+
+      let finalAverageCost = oldCost;
+
+      //////////////////////////////////////////////////////
+      // PROMEDIO PONDERADO LOCAL
+      //////////////////////////////////////////////////////
+
+      if (applyStockUpdate && newStock > 0) {
+        const totalStock = oldStock + newStock;
+
+        finalStock = totalStock;
+
+        finalAverageCost =
+          totalStock > 0
+            ? Number(
+                (
+                  (oldStock * oldCost + newStock * newCost) /
+                  totalStock
+                ).toFixed(2),
+              )
+            : 0;
+      }
+
+      //////////////////////////////////////////////////////
+      // UPDATE INVENTARIO LOCAL
+      //////////////////////////////////////////////////////
+
+      await tx.inventory.update({
+        where: {
+          productId_locationId: {
+            productId: id,
+            locationId: locId,
+          },
+        },
+
+        data: {
+          quantity: finalStock,
+
+          averageCost: finalAverageCost,
+        },
+      });
+
+      //////////////////////////////////////////////////////
+      // CALCULAR PROMEDIO GLOBAL
+      //////////////////////////////////////////////////////
+
+      const allInventories = await tx.inventory.findMany({
+        where: {
+          productId: id,
+        },
+      });
+
+      //////////////////////////////////////////////////////
+      // STOCK GLOBAL
+      //////////////////////////////////////////////////////
+
+      const globalStock = allInventories.reduce(
+        (acc, item) => acc + Number(item.quantity || 0),
+        0,
+      );
+
+      //////////////////////////////////////////////////////
+      // COSTO TOTAL GLOBAL
+      //////////////////////////////////////////////////////
+
+      const globalCostTotal = allInventories.reduce(
+        (acc, item) =>
+          acc + Number(item.quantity || 0) * Number(item.averageCost || 0),
+        0,
+      );
+
+      //////////////////////////////////////////////////////
+      // COSTO PROMEDIO GLOBAL
+      //////////////////////////////////////////////////////
+
+      const globalAverageCost =
+        globalStock > 0
+          ? Number((globalCostTotal / globalStock).toFixed(2))
+          : 0;
+
+      //////////////////////////////////////////////////////
+      // PORCENTAJE GANANCIA
+      //////////////////////////////////////////////////////
+
+      const porcentajeGanancia = Number(
+        currentProduct.porcentajeGanancia || 50,
+      );
+
+      //////////////////////////////////////////////////////
+      // COSTO + IVA
+      //////////////////////////////////////////////////////
+
+      const costWithIVA = globalAverageCost * 1.1494;
+
+      //////////////////////////////////////////////////////
+      // PRECIO BASE
+      //////////////////////////////////////////////////////
+
+      const calculatedSalePrice = costWithIVA * (1 + porcentajeGanancia / 100);
+
+      const roundedSalePrice = Math.round(calculatedSalePrice);
+
+      //////////////////////////////////////////////////////
+      // UNIDADES
+      //////////////////////////////////////////////////////
+
+      const unitCodes = productUnits.map((u: any) =>
+        u.unitCode.trim().toUpperCase(),
+      );
+
+      const units = await tx.unit.findMany({
+        where: {
+          code: {
+            in: unitCodes,
+          },
+        },
+      });
+
+      if (units.length !== unitCodes.length) {
+        throw new Error("Existen unidades inválidas");
+      }
+
+      const unitMap = new Map(units.map((u) => [u.code.toUpperCase(), u]));
+
+      //////////////////////////////////////////////////////
+      // UPDATE PRODUCT
+      //////////////////////////////////////////////////////
+
+      await tx.product.update({
+        where: {
+          id,
+        },
+
+        data: {
+          name: productData.name?.trim()?.toUpperCase(),
+
+          description: productData.description,
+
+          code: productData.code?.trim(),
+
+          lineId: Number(productData.lineId),
+
+          brandName: productData.brandName,
+
+          baseUnitId: baseUnit.id,
+
+          //////////////////////////////////////////////////
+          // COSTO GLOBAL
+          //////////////////////////////////////////////////
+
+          purchasePrice: globalAverageCost,
+
+          //////////////////////////////////////////////////
+          // PRECIO GLOBAL
+          //////////////////////////////////////////////////
+
+          salePrice: roundedSalePrice,
+        },
+      });
+
+      //////////////////////////////////////////////////////
+      // PRODUCT UNITS
+      //////////////////////////////////////////////////////
+
+      const existingUnits = await tx.productUnit.findMany({
+        where: {
+          productId: id,
+        },
+      });
+
+      const existingMap = new Map(existingUnits.map((u) => [u.unitId, u]));
+
+      for (const item of productUnits) {
+        const unit = unitMap.get(item.unitCode.trim().toUpperCase());
+
+        if (!unit) {
+          throw new Error(`Unidad no encontrada: ${item.unitCode}`);
+        }
+
+        const equivalence = Number(item.equivalence || 1);
+
+        ////////////////////////////////////////////////////
+        // PRECIO PRESENTACIÓN
+        ////////////////////////////////////////////////////
+
+        const unitSalePrice = calculatedSalePrice * equivalence;
+
+        const roundedUnitPrice = Math.round(unitSalePrice);
+
+        ////////////////////////////////////////////////////
+        // EXISTENTE
+        ////////////////////////////////////////////////////
+
+        const existing = existingMap.get(unit.id);
+
+        if (existing) {
+          await tx.productUnit.update({
+            where: {
+              id: existing.id,
+            },
+
+            data: {
+              equivalence,
+
+              //////////////////////////////////////////////////
+              // COSTO GLOBAL
+              //////////////////////////////////////////////////
+
+              purchasePrice: globalAverageCost,
+
+              //////////////////////////////////////////////////
+              // PRECIO GLOBAL
+              //////////////////////////////////////////////////
+
+              salePrice: roundedUnitPrice,
+
+              isDefault: item.isDefault || false,
+            },
+          });
+        } else {
+          await tx.productUnit.create({
+            data: {
+              productId: id,
+
+              unitId: unit.id,
+
+              equivalence,
+
+              //////////////////////////////////////////////////
+              // COSTO GLOBAL
+              //////////////////////////////////////////////////
+
+              purchasePrice: globalAverageCost,
+
+              //////////////////////////////////////////////////
+              // PRECIO GLOBAL
+              //////////////////////////////////////////////////
+
+              salePrice: roundedUnitPrice,
+
+              isDefault: item.isDefault || false,
+            },
+          });
+        }
+      }
+
+      //////////////////////////////////////////////////////
+      // MOVIMIENTO
+      //////////////////////////////////////////////////////
+
+      const defaultUnit = await tx.productUnit.findFirst({
+        where: {
+          productId: id,
+
+          isDefault: true,
+        },
+      });
+
+      if (applyStockUpdate && newStock > 0 && defaultUnit) {
+        await tx.stockMovement.create({
+          data: {
+            productId: id,
+
+            productUnitId: defaultUnit.id,
+
+            toLocationId: locId,
+
+            quantity: newStock,
+
+            presentationQuantity: newStock,
+
+            type: "IN",
+
+            unitCost: newCost,
+
+            reference: "IMPORTACIÓN",
+          },
+        });
+      }
+
+      //////////////////////////////////////////////////////
+      // RETURN
+      //////////////////////////////////////////////////////
+
+      return tx.product.findUnique({
+        where: {
+          id,
+        },
+
+        include: {
+          line: true,
+
+          baseUnit: true,
+
+          productUnits: {
+            include: {
+              unit: true,
+            },
+          },
+
+          inventories: {
+            include: {
+              location: true,
+            },
+          },
+        },
+      });
+    },
+    {
+      timeout: 15000,
+    },
+  );
 };
 //////////////////////////////////////////////////////////
 // DELETE PRODUCT
@@ -352,7 +528,6 @@ export const deleteProductRepo = async (id: number) => {
     },
   });
 };
-
 
 export const getKardexRepo = async ({
   productId,
@@ -797,20 +972,13 @@ export const getKardexRepository = async (body: any) => {
   // 🔥 ROUND
   ////////////////////////////////////////////////////////////
 
-  const round = (value: number) =>
-    Number(Number(value || 0).toFixed(2));
+  const round = (value: number) => Number(Number(value || 0).toFixed(2));
 
   ////////////////////////////////////////////////////////////
   // 🔥 BODY
   ////////////////////////////////////////////////////////////
 
-  const {
-    fromDate,
-    toDate,
-    sucursal,
-    linea,
-    marca,
-  } = body;
+  const { fromDate, toDate, sucursal, linea, marca } = body;
 
   ////////////////////////////////////////////////////////////
   // 🔥 FECHAS
@@ -897,61 +1065,43 @@ export const getKardexRepository = async (body: any) => {
     // 🔥 INFO
     //////////////////////////////////////////////////////////
 
-    const seller =
-      `${item.sale.employee.name} ${item.sale.employee.lastName}`;
+    const seller = `${item.sale.employee.name} ${item.sale.employee.lastName}`;
 
-    const branch =
-      item.sale.location.name;
+    const branch = item.sale.location.name;
 
-    const line =
-      item.product.line?.name ||
-      "Sin línea";
+    const line = item.product.line?.name || "Sin línea";
 
-    const brand =
-      item.product.brandName ||
-      "Sin marca";
+    const brand = item.product.brandName || "Sin marca";
 
     //////////////////////////////////////////////////////////
     // 🔥 PRECIO BASE
     //////////////////////////////////////////////////////////
 
-    const price = round(
-      Number(item.product.salePrice || 0)
-    );
+    const price = round(Number(item.product.salePrice || 0));
 
     //////////////////////////////////////////////////////////
     // 🔥 SUBTOTAL
     //////////////////////////////////////////////////////////
 
-    const subtotal = round(
-      Number(item.quantity) *
-        Number(item.unitPrice)
-    );
+    const subtotal = round(Number(item.quantity) * Number(item.unitPrice));
 
     //////////////////////////////////////////////////////////
     // 🔥 PRECIO HISTÓRICO
     //////////////////////////////////////////////////////////
 
-    const finalPrice = round(
-      subtotal /
-        Number(item.quantity || 1)
-    );
+    const finalPrice = round(subtotal / Number(item.quantity || 1));
 
     //////////////////////////////////////////////////////////
     // 🔥 DESCUENTO REAL DEL ITEM
     //////////////////////////////////////////////////////////
 
-    const discount = round(
-      Number(item.itemDiscount || 0)
-    );
+    const discount = round(Number(item.itemDiscount || 0));
 
     //////////////////////////////////////////////////////////
     // 🔥 TOTAL
     //////////////////////////////////////////////////////////
 
-    const total = round(
-      subtotal - discount
-    );
+    const total = round(subtotal - discount);
 
     //////////////////////////////////////////////////////////
     // 🔥 PUSH
@@ -980,7 +1130,7 @@ export const getKardexRepository = async (body: any) => {
 
       name: item.product.name,
 
-      barcode: item.product.code,
+      code: item.product.code,
 
       line,
 
@@ -1000,9 +1150,7 @@ export const getKardexRepository = async (body: any) => {
 
       unitName: item.unitName,
 
-      equivalence: Number(
-        item.equivalence || 1
-      ),
+      equivalence: Number(item.equivalence || 1),
 
       ////////////////////////////////////////////////////////
       // 🔥 TOTALES
@@ -1014,11 +1162,11 @@ export const getKardexRepository = async (body: any) => {
       // 🔥 PRECIOS
       ////////////////////////////////////////////////////////
 
+      purchasePrice: round(Number(item.product.purchasePrice || 0)),
+
       price,
 
-      unitPrice: round(
-        Number(item.unitPrice)
-      ),
+      unitPrice: round(Number(item.unitPrice)),
 
       finalPrice,
 
@@ -1039,29 +1187,15 @@ export const getKardexRepository = async (body: any) => {
   ////////////////////////////////////////////////////////////
 
   const subtotal = round(
-    result.reduce(
-      (acc, item) =>
-        acc +
-        Number(item.subtotal || 0),
-      0
-    )
+    result.reduce((acc, item) => acc + Number(item.subtotal || 0), 0),
   );
 
   const discount = round(
-    result.reduce(
-      (acc, item) =>
-        acc +
-        Number(item.discount || 0),
-      0
-    )
+    result.reduce((acc, item) => acc + Number(item.discount || 0), 0),
   );
 
   const total = round(
-    result.reduce(
-      (acc, item) =>
-        acc + Number(item.total || 0),
-      0
-    )
+    result.reduce((acc, item) => acc + Number(item.total || 0), 0),
   );
 
   ////////////////////////////////////////////////////////////
@@ -1085,7 +1219,7 @@ export const getKardexRepository = async (body: any) => {
     // 🔥 KEY
     //////////////////////////////////////////////////////////
 
-    const key = item.barcode;
+    const key = item.code;
 
     //////////////////////////////////////////////////////////
     // 🔥 INIT
@@ -1094,6 +1228,8 @@ export const getKardexRepository = async (body: any) => {
     if (!groupedProducts[key]) {
       groupedProducts[key] = {
         id: item.id,
+
+        dates: [],
 
         name: item.name,
 
@@ -1107,7 +1243,9 @@ export const getKardexRepository = async (body: any) => {
 
         brand: item.brand,
 
-        barcode: item.barcode,
+        code: item.code,
+
+        purchasePrice: item.purchasePrice,
 
         sellers: [],
 
@@ -1129,69 +1267,63 @@ export const getKardexRepository = async (body: any) => {
     // 🔥 ACUMULAR GENERALES
     //////////////////////////////////////////////////////////
 
-    groupedProducts[key].quantity +=
-      Number(item.quantity || 0);
+    groupedProducts[key].quantity += Number(item.quantity || 0);
 
-    groupedProducts[key].subtotal =
-      round(
-        groupedProducts[key].subtotal +
-          Number(item.subtotal || 0)
-      );
+    groupedProducts[key].dates.push({
+      date: item.date,
 
-    groupedProducts[key].discount =
-      round(
-        groupedProducts[key].discount +
-          Number(item.discount || 0)
-      );
+      quantity: Number(item.quantity || 0),
+
+      subtotal: Number(item.subtotal || 0),
+
+      discount: Number(item.discount || 0),
+
+      total: Number(item.total || 0),
+    });
+    
+    groupedProducts[key].subtotal = round(
+      groupedProducts[key].subtotal + Number(item.subtotal || 0),
+    );
+
+    groupedProducts[key].discount = round(
+      groupedProducts[key].discount + Number(item.discount || 0),
+    );
 
     groupedProducts[key].total = round(
-      groupedProducts[key].total +
-        Number(item.total || 0)
+      groupedProducts[key].total + Number(item.total || 0),
     );
 
     //////////////////////////////////////////////////////////
     // 🔥 SELLERS
     //////////////////////////////////////////////////////////
 
-    const existingSeller =
-      groupedProducts[key].sellers.find(
-        (seller: any) =>
-          seller.name === item.seller
-      );
+    const existingSeller = groupedProducts[key].sellers.find(
+      (seller: any) => seller.name === item.seller,
+    );
 
     if (existingSeller) {
-      existingSeller.quantity +=
-        Number(item.quantity || 0);
+      existingSeller.quantity += Number(item.quantity || 0);
 
       existingSeller.subtotal = round(
-        existingSeller.subtotal +
-          Number(item.subtotal || 0)
+        existingSeller.subtotal + Number(item.subtotal || 0),
       );
 
       existingSeller.discount = round(
-        existingSeller.discount +
-          Number(item.discount || 0)
+        existingSeller.discount + Number(item.discount || 0),
       );
 
       existingSeller.total = round(
-        existingSeller.total +
-          Number(item.total || 0)
+        existingSeller.total + Number(item.total || 0),
       );
     } else {
       groupedProducts[key].sellers.push({
         name: item.seller,
 
-        quantity: Number(
-          item.quantity || 0
-        ),
+        quantity: Number(item.quantity || 0),
 
-        subtotal: Number(
-          item.subtotal || 0
-        ),
+        subtotal: Number(item.subtotal || 0),
 
-        discount: Number(
-          item.discount || 0
-        ),
+        discount: Number(item.discount || 0),
 
         total: Number(item.total || 0),
       });
@@ -1201,59 +1333,46 @@ export const getKardexRepository = async (body: any) => {
     // 🔥 BUSCAR DETALLE
     //////////////////////////////////////////////////////////
 
-    const existingDetail =
-      groupedProducts[key].details.find(
-        (detail: any) =>
-          Number(detail.finalPrice) ===
-            Number(item.finalPrice) &&
-          detail.unitName === item.unitName
-      );
+    const existingDetail = groupedProducts[key].details.find(
+      (detail: any) =>
+        Number(detail.finalPrice) === Number(item.finalPrice) &&
+        detail.unitName === item.unitName,
+    );
 
     //////////////////////////////////////////////////////////
     // 🔥 SI EXISTE
     //////////////////////////////////////////////////////////
 
     if (existingDetail) {
-      existingDetail.quantity +=
-        Number(item.quantity || 0);
+      existingDetail.quantity += Number(item.quantity || 0);
 
       existingDetail.subtotal = round(
-        existingDetail.subtotal +
-          Number(item.subtotal || 0)
+        existingDetail.subtotal + Number(item.subtotal || 0),
       );
 
       existingDetail.discount = round(
-        existingDetail.discount +
-          Number(item.discount || 0)
+        existingDetail.discount + Number(item.discount || 0),
       );
 
       existingDetail.total = round(
-        existingDetail.total +
-          Number(item.total || 0)
+        existingDetail.total + Number(item.total || 0),
       );
     }
 
     //////////////////////////////////////////////////////////
     // 🔥 NUEVO DETALLE
     //////////////////////////////////////////////////////////
-
     else {
       groupedProducts[key].details.push({
         unitName: item.unitName,
 
         finalPrice: item.finalPrice,
 
-        quantity: Number(
-          item.quantity || 0
-        ),
+        quantity: Number(item.quantity || 0),
 
-        subtotal: Number(
-          item.subtotal || 0
-        ),
+        subtotal: Number(item.subtotal || 0),
 
-        discount: Number(
-          item.discount || 0
-        ),
+        discount: Number(item.discount || 0),
 
         total: Number(item.total || 0),
       });
@@ -1264,9 +1383,7 @@ export const getKardexRepository = async (body: any) => {
   // 🔥 FORMATEAR
   ////////////////////////////////////////////////////////////
 
-  const finalResult = Object.values(
-    groupedProducts
-  ).map((item: any) => ({
+  const finalResult = Object.values(groupedProducts).map((item: any) => ({
     ...item,
 
     //////////////////////////////////////////////////////////
@@ -1276,9 +1393,7 @@ export const getKardexRepository = async (body: any) => {
     finalPrice: item.details
       .map(
         (detail: any) =>
-          `${detail.unitName}: Bs ${Number(
-            detail.finalPrice
-          ).toFixed(2)}`
+          `${detail.unitName}: Bs ${Number(detail.finalPrice).toFixed(2)}`,
       )
       .join(" / "),
 
@@ -1287,10 +1402,7 @@ export const getKardexRepository = async (body: any) => {
     //////////////////////////////////////////////////////////
 
     quantityDetail: item.details
-      .map(
-        (detail: any) =>
-          `${detail.quantity}`
-      )
+      .map((detail: any) => `${detail.quantity}`)
       .join(" / "),
 
     //////////////////////////////////////////////////////////
@@ -1298,12 +1410,7 @@ export const getKardexRepository = async (body: any) => {
     //////////////////////////////////////////////////////////
 
     subtotalDetail: item.details
-      .map(
-        (detail: any) =>
-          `Bs ${Number(
-            detail.subtotal
-          ).toFixed(2)}`
-      )
+      .map((detail: any) => `Bs ${Number(detail.subtotal).toFixed(2)}`)
       .join(" / "),
 
     //////////////////////////////////////////////////////////
@@ -1311,12 +1418,7 @@ export const getKardexRepository = async (body: any) => {
     //////////////////////////////////////////////////////////
 
     discountDetail: item.details
-      .map(
-        (detail: any) =>
-          `Bs ${Number(
-            detail.discount
-          ).toFixed(2)}`
-      )
+      .map((detail: any) => `Bs ${Number(detail.discount).toFixed(2)}`)
       .join(" / "),
 
     //////////////////////////////////////////////////////////
@@ -1324,12 +1426,7 @@ export const getKardexRepository = async (body: any) => {
     //////////////////////////////////////////////////////////
 
     totalDetail: item.details
-      .map(
-        (detail: any) =>
-          `Bs ${Number(
-            detail.total
-          ).toFixed(2)}`
-      )
+      .map((detail: any) => `Bs ${Number(detail.total).toFixed(2)}`)
       .join(" / "),
   }));
 
@@ -1338,4 +1435,132 @@ export const getKardexRepository = async (body: any) => {
   ////////////////////////////////////////////////////////////
 
   return finalResult;
+};
+
+export const updateMargenProductRepo = async (
+  id: number,
+  porcentajeGanancia: number,
+) => {
+  return prisma.$transaction(async (tx) => {
+    //////////////////////////////////////////////////////
+    // PRODUCTO
+    //////////////////////////////////////////////////////
+
+    const product = await tx.product.findUnique({
+      where: {
+        id,
+      },
+
+      include: {
+        productUnits: true,
+      },
+    });
+
+    if (!product) {
+      throw new Error("Producto no encontrado");
+    }
+
+    //////////////////////////////////////////////////////
+    // COSTO BASE
+    //////////////////////////////////////////////////////
+
+    const purchasePrice = Number(product.purchasePrice || 0);
+
+    //////////////////////////////////////////////////////
+    // IVA 14.94%
+    //////////////////////////////////////////////////////
+
+    const costWithIVA = purchasePrice * 1.1494;
+
+    //////////////////////////////////////////////////////
+    // NUEVO PRECIO
+    //////////////////////////////////////////////////////
+
+    const newSalePrice =
+      costWithIVA * (1 + Number(porcentajeGanancia || 0) / 100);
+
+    //////////////////////////////////////////////////////
+    // REDONDEAR
+    //////////////////////////////////////////////////////
+
+    const roundedSalePrice = Math.round(newSalePrice);
+
+    //////////////////////////////////////////////////////
+    // UPDATE PRODUCT
+    //////////////////////////////////////////////////////
+
+    await tx.product.update({
+      where: {
+        id,
+      },
+
+      data: {
+        porcentajeGanancia: Number(porcentajeGanancia),
+
+        salePrice: roundedSalePrice,
+      },
+    });
+
+    //////////////////////////////////////////////////////
+    // UPDATE PRESENTACIONES
+    //////////////////////////////////////////////////////
+
+    for (const unit of product.productUnits) {
+      const equivalence = Number(unit.equivalence || 1);
+
+      ////////////////////////////////////////////////////
+      // PRECIO PRESENTACIÓN
+      ////////////////////////////////////////////////////
+
+      const unitSalePrice = newSalePrice * equivalence;
+
+      ////////////////////////////////////////////////////
+      // REDONDEAR
+      ////////////////////////////////////////////////////
+
+      const roundedUnitPrice = Math.round(unitSalePrice);
+
+      ////////////////////////////////////////////////////
+      // UPDATE
+      ////////////////////////////////////////////////////
+
+      await tx.productUnit.update({
+        where: {
+          id: unit.id,
+        },
+
+        data: {
+          salePrice: roundedUnitPrice,
+        },
+      });
+    }
+
+    //////////////////////////////////////////////////////
+    // RETURN
+    //////////////////////////////////////////////////////
+
+    return tx.product.findUnique({
+      where: {
+        id,
+      },
+
+      include: {
+        line: true,
+
+        baseUnit: true,
+
+        productUnits: {
+          include: {
+            unit: true,
+          },
+        },
+
+        inventories: {
+          include: {
+            location: true,
+          },
+        },
+      },
+    });
+  });
 };
