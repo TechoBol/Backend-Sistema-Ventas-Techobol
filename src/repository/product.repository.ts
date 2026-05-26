@@ -1229,6 +1229,8 @@ export const getKardexRepository = async (body: any) => {
       groupedProducts[key] = {
         id: item.id,
 
+        dates: [],
+
         name: item.name,
 
         product: item.product,
@@ -1267,6 +1269,18 @@ export const getKardexRepository = async (body: any) => {
 
     groupedProducts[key].quantity += Number(item.quantity || 0);
 
+    groupedProducts[key].dates.push({
+      date: item.date,
+
+      quantity: Number(item.quantity || 0),
+
+      subtotal: Number(item.subtotal || 0),
+
+      discount: Number(item.discount || 0),
+
+      total: Number(item.total || 0),
+    });
+    
     groupedProducts[key].subtotal = round(
       groupedProducts[key].subtotal + Number(item.subtotal || 0),
     );
