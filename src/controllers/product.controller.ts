@@ -10,6 +10,7 @@ import {
   deleteProductRepo,
   getKardexRepository,
   getKardexRepo,
+  updateMargenProductRepo,
 } from "../repository/product.repository";
 
 //////////////////////////////////////////////////////////
@@ -163,19 +164,19 @@ export const createProduct = async (req: Request, res: Response) => {
       const product = await tx.product.create({
         data: {
           name: name.trim().toUpperCase(),
-      
+
           description,
-      
+
           code: code.trim(),
-      
+
           lineId: Number(lineId),
-      
+
           brandName: brandName.trim(),
-      
+
           baseUnitId: baseUnit.id,
-      
+
           purchasePrice: Number(averageCost || 0),
-      
+
           salePrice: Number(defaultPresentation.salePrice),
         },
       });
@@ -200,7 +201,6 @@ export const createProduct = async (req: Request, res: Response) => {
             purchasePrice: Number(averageCost || 0),
 
             salePrice: Number(item.salePrice),
-
 
             isDefault: item.isDefault || false,
           },
@@ -347,22 +347,22 @@ export const getProductById = async (req: Request, res: Response) => {
 // UPDATE PRODUCT
 //////////////////////////////////////////////////////////
 
-  export const updateProduct = async (req: Request, res: Response) => {
-    try {
-      const id = Number(req.params.id);
+export const updateProduct = async (req: Request, res: Response) => {
+  try {
+    const id = Number(req.params.id);
 
-      const updated = await updateProductRepo(id, req.body);
+    const updated = await updateProductRepo(id, req.body);
 
-      return res.json(updated);
-    } catch (error: any) {
-      console.error("UPDATE PRODUCT ERROR:", error);
-    
-      return res.status(500).json({
-        message: error.message || "No se pudo actualizar el producto",
-        error,
-      });
-    }
-  };
+    return res.json(updated);
+  } catch (error: any) {
+    console.error("UPDATE PRODUCT ERROR:", error);
+
+    return res.status(500).json({
+      message: error.message || "No se pudo actualizar el producto",
+      error,
+    });
+  }
+};
 
 //////////////////////////////////////////////////////////
 // DELETE PRODUCT
@@ -392,7 +392,7 @@ export const getKardex = async (req: Request, res: Response) => {
 
     console.log("📤 Enviando respuesta...");
 
-    return res.status(200).json(kardex); 
+    return res.status(200).json(kardex);
   } catch (error) {
     console.error("❌ Error en kardex:", error);
 
@@ -402,14 +402,9 @@ export const getKardex = async (req: Request, res: Response) => {
   }
 };
 
-export const getKardexPro = async (
-  req: Request,
-  res: Response,
-) => {
+export const getKardexPro = async (req: Request, res: Response) => {
   try {
-    const data = await getKardexRepository(
-      req.body,
-    );
+    const data = await getKardexRepository(req.body);
 
     return res.status(200).json({
       ok: true,
@@ -420,9 +415,63 @@ export const getKardexPro = async (
 
     return res.status(500).json({
       ok: false,
-      message:
-        error.message ||
-        "Error obteniendo kardex",
+      message: error.message || "Error obteniendo kardex",
+    });
+  }
+};
+
+export const updateMargenProduct = async (req: Request, res: Response) => {
+  try {
+    const id = Number(req.params.id);
+
+    const {
+      porcentajeGanancia,
+
+      quantityDiscount,
+
+      bossDiscount,
+    } = req.body;
+
+    //////////////////////////////////////////////////////
+    // VALIDACIONES
+    //////////////////////////////////////////////////////
+
+    if (isNaN(id)) {
+      return res.status(400).json({
+        message: "ID inválido",
+      });
+    }
+
+    if (porcentajeGanancia === undefined || porcentajeGanancia === null) {
+      return res.status(400).json({
+        message: "porcentajeGanancia es requerido",
+      });
+    }
+
+    //////////////////////////////////////////////////////
+    // UPDATE
+    //////////////////////////////////////////////////////
+
+    const product = await updateMargenProductRepo(
+      Number(id),
+
+      Number(porcentajeGanancia),
+
+      Number(quantityDiscount),
+
+      Number(bossDiscount),
+    );
+
+    return res.status(200).json({
+      message: "Margen actualizado correctamente",
+
+      product,
+    });
+  } catch (error: any) {
+    console.error("UPDATE MARGEN ERROR:", error);
+
+    return res.status(500).json({
+      message: error.message || "No se pudo actualizar el margen",
     });
   }
 };
