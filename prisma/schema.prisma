@@ -8,17 +8,19 @@ datasource db {
 }
 
 model Location {
-  id           Int          @id @default(autoincrement())
-  name         String
-  type         LocationType
-  address      String?
-  abbreviation String?
-  saleCounter  Int          @default(0)
-  isVisible    Boolean      @default(true)
+  id               Int          @id @default(autoincrement())
+  name             String
+  type             LocationType
+  address          String?
+  abbreviation     String?
+  saleCounter      Int          @default(0)
+  quotationCounter Int          @default(0) // ✅ nuevo
+  isVisible        Boolean      @default(true)
 
   employees   Employee[]
   inventories Inventory[]
   sales       Sale[]
+  quotations  Quotation[] // ✅ nuevo
 
   fromMovements StockMovement[] @relation("FromLocation")
   toMovements   StockMovement[] @relation("ToLocation")
@@ -48,7 +50,8 @@ model Employee {
 
   isVisible Boolean @default(true)
 
-  sales Sale[]
+  sales      Sale[]
+  quotations Quotation[] // ✅ nuevo
 
   requestedTransfers Transfer[] @relation("RequestedBy")
   approvedTransfers  Transfer[] @relation("ApprovedBy")
@@ -101,13 +104,15 @@ model Product {
   line   Line? @relation(fields: [lineId], references: [id])
   lineId Int?
 
-  brandName         String?
-  quantityDiscount  Float               @default(10)
-  bossDiscount      Float               @default(25)
+  brandName        String?
+  quantityDiscount Float   @default(10)
+  bossDiscount     Float   @default(25)
+
   productUnits      ProductUnit[]
   inventories       Inventory[]
   movements         StockMovement[]
   saleDetails       SaleDetail[]
+  quotationDetails  QuotationDetail[] // ✅ nuevo
   transferItems     TransferItem[]
   ImportacionDetail ImportacionDetail[]
 }
@@ -129,6 +134,7 @@ model ProductUnit {
   isDefault Boolean @default(false)
 
   saleDetails       SaleDetail[]
+  quotationDetails  QuotationDetail[] // ✅ nuevo
   stockMovements    StockMovement[]
   transferItems     TransferItem[]
   ImportacionDetail ImportacionDetail[]
@@ -242,8 +248,7 @@ enum TransferStatus {
 }
 
 model Sale {
-  id Int @id @default(autoincrement())
-
+  id   Int      @id @default(autoincrement())
   date DateTime @default(now())
 
   location   Location @relation(fields: [locationId], references: [id])
@@ -267,6 +272,9 @@ model Sale {
   typeSale          String?
   transactionNumber String?
 
+  bankName        String?
+  generateInvoice Boolean @default(false) // ✅ corregido (estaba solo en controller)
+
   paymentMethodChanged Boolean @default(false)
   dateChanged          Boolean @default(false)
 
@@ -275,13 +283,16 @@ model Sale {
   cancelledAt   DateTime?
   cancelledById Int?
 
+  // ✅ origen desde cotización
+  quotation   Quotation? @relation(fields: [quotationId], references: [id])
+  quotationId Int?
+
   customerAddress   CustomerAddress? @relation(fields: [customerAddressId], references: [id])
   customerAddressId Int?
 
-  customerAddressSnapshot String?
-
-  customerLatitudeSnapshot  Float?
-  customerLongitudeSnapshot Float?
+  customerAddressSnapshot   String?
+  customerLatitudeSnapshot  Float? // ✅ corregido (era String en el controller)
+  customerLongitudeSnapshot Float? // ✅ corregido (era String en el controller)
 }
 
 enum SaleStatus {
@@ -301,15 +312,69 @@ model SaleDetail {
   productUnit   ProductUnit @relation(fields: [productUnitId], references: [id])
   productUnitId Int
 
-  unitName    String
-  equivalence Float
+  unitName     String
+  equivalence  Float
+  quantity     Float
+  unitPrice    Float
+  itemDiscount Float  @default(0)
+  subtotal     Float
+}
 
-  quantity  Float
-  unitPrice Float
+// ✅ NUEVO
+model Quotation {
+  id   Int      @id @default(autoincrement())
+  code String   @unique
+  date DateTime @default(now())
 
-  itemDiscount Float @default(0)
+  location   Location @relation(fields: [locationId], references: [id])
+  locationId Int
 
-  subtotal Float
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  employeeId Int
+
+  customer   Customer? @relation(fields: [customerId], references: [id])
+  customerId Int?
+
+  subtotal Float @default(0)
+  discount Float @default(0)
+  total    Float
+
+  status    QuotationStatus @default(PENDING)
+  notes     String?
+  expiresAt DateTime?
+
+  details QuotationDetail[]
+  sales   Sale[] // si se convierte en venta
+
+  createdAt DateTime @default(now())
+}
+
+enum QuotationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+// ✅ NUEVO
+model QuotationDetail {
+  id Int @id @default(autoincrement())
+
+  quotation   Quotation @relation(fields: [quotationId], references: [id])
+  quotationId Int
+
+  product   Product @relation(fields: [productId], references: [id])
+  productId Int
+
+  productUnit   ProductUnit @relation(fields: [productUnitId], references: [id])
+  productUnitId Int
+
+  unitName     String
+  equivalence  Float
+  quantity     Float
+  unitPrice    Float
+  itemDiscount Float  @default(0)
+  subtotal     Float
 }
 
 model Customer {
@@ -321,7 +386,6 @@ model Customer {
   code         String? @unique
   phone        String?
 
-  // ─── Campos CRM ───
   whatsapp              String?
   occupation            String?
   originChannel         String?
@@ -329,11 +393,11 @@ model Customer {
   reserveAmount         Float    @default(0)
   purchaseFrequencyDays Int?
   createdAt             DateTime @default(now())
-  // ──────────────────
 
   addresses  CustomerAddress[]
   isVisible  Boolean           @default(true)
   sales      Sale[]
+  quotations Quotation[] // ✅ nuevo
   activities Activity[]
   notes      Note[]
 }
@@ -344,19 +408,13 @@ model CustomerAddress {
   customer   Customer @relation(fields: [customerId], references: [id])
   customerId Int
 
-  label String?
-
-  address String
-
+  label     String?
+  address   String
   latitude  Float?
   longitude Float?
-
   reference String?
-
-  isPrimary Boolean @default(false)
-
-  isVisible Boolean @default(true)
-
+  isPrimary Boolean  @default(false)
+  isVisible Boolean  @default(true)
   createdAt DateTime @default(now())
 
   sales Sale[]
@@ -380,18 +438,12 @@ model Note {
 }
 
 model Importacion {
-  id Int @id @default(autoincrement())
-
-  code String @unique
-
-  supplier String
-
-  date DateTime
-
-  total Float @default(0)
-
-  notes String?
-
+  id        Int      @id @default(autoincrement())
+  code      String   @unique
+  supplier  String
+  date      DateTime
+  total     Float    @default(0)
+  notes     String?
   createdAt DateTime @default(now())
 
   details ImportacionDetail[]
@@ -410,8 +462,6 @@ model ImportacionDetail {
   productUnitId Int?
 
   quantity Float
-
   unitCost Float
-
   subtotal Float
 }
