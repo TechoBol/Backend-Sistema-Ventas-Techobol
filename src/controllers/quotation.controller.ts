@@ -7,6 +7,7 @@ import {
   createQuotationDetailRepo,
   incrementQuotationCounterRepo,
   getQuotationsRepo,
+  getQuotationsByCustomerRepo,
 } from "../repository/quotation.repository";
 
 // =====================================================
@@ -473,6 +474,19 @@ export const convertQuotationToSale = async (req: Request, res: Response) => {
     console.error("❌ ERROR CONVERT QUOTATION:", err);
     return res.status(500).json({
       message: err.message || "No se pudo convertir la cotización",
+    });
+  }
+};
+
+export const getQuotationsByCustomer = async (req: Request, res: Response) => {
+  try {
+    const { customerId } = req.params;
+    const data = await getQuotationsByCustomerRepo(Number(customerId));
+    return res.json(data);
+  } catch (error) {
+    console.error("❌ ERROR GET QUOTATIONS BY CUSTOMER:", error);
+    return res.status(500).json({
+      message: "No se pudieron obtener las cotizaciones del cliente",
     });
   }
 };

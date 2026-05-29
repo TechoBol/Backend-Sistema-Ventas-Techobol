@@ -42,7 +42,13 @@ export const getCustomerById = async (id: number) => {
       sales: {
         where: { status: 'COMPLETED' },
         orderBy: { date: 'asc' },
-        include: {
+        select: {
+          id: true,
+          code: true,
+          date: true,
+          total: true,
+          typeSale: true,
+          status: true,
           employee: { select: { name: true, lastName: true } },
           location: { select: { name: true } },
         },
