@@ -175,191 +175,227 @@ export const approveTransferRepo = async (
   approvedById: number,
   fromLocationId: number,
 ) => {
-  const transfer = await prisma.transfer.findUnique({
-    where: {
-      id: transferId,
-    },
-
-    include: {
-      items: true,
-      requestedBy: true,
-    },
-  });
-
-  if (!transfer) {
-    throw new Error("Transfer no existe");
-  }
-
-  if (transfer.status !== "PENDING") {
-    throw new Error("Transfer ya procesada");
-  }
-
-  const toLocationId = transfer.toLocationId;
-
-  if (!toLocationId) {
-    throw new Error("Location destino inválida");
-  }
-
-  const productIds = transfer.items.map((i) => i.productId);
-
-  const sourceInventories = await prisma.inventory.findMany({
-    where: {
-      locationId: fromLocationId,
-      productId: {
-        in: productIds,
-      },
-    },
-  });
-
-  const targetInventories = await prisma.inventory.findMany({
-    where: {
-      locationId: toLocationId,
-      productId: {
-        in: productIds,
-      },
-    },
-  });
-
-  const sourceMap = new Map(sourceInventories.map((i) => [i.productId, i]));
-
-  const targetMap = new Map(targetInventories.map((i) => [i.productId, i]));
-
-  for (const item of transfer.items) {
-    const sourceInventory = sourceMap.get(item.productId);
-
-    if (!sourceInventory) {
-      throw new Error(`Inventario origen no encontrado ${item.productId}`);
-    }
-
-    if (sourceInventory.quantity < item.quantity) {
-      throw new Error(`Stock insuficiente para producto ${item.productId}`);
-    }
-  }
-
-  const queries: any[] = [];
-
-  for (const item of transfer.items) {
-    const sourceInventory = sourceMap.get(item.productId)!;
-
-    const averageCost = sourceInventory.averageCost || 0;
-
-    queries.push(
-      prisma.inventory.update({
+  return prisma.$transaction(
+    async (tx) => {
+      const transfer = await tx.transfer.findUnique({
         where: {
-          productId_locationId: {
-            productId: item.productId,
-            locationId: fromLocationId,
+          id: transferId,
+        },
+        include: {
+          items: true,
+          requestedBy: true,
+        },
+      });
+
+      if (!transfer) {
+        throw new Error("Transfer no existe");
+      }
+
+      if (transfer.status !== "PENDING") {
+        throw new Error("Transfer ya procesada");
+      }
+
+      const toLocationId = transfer.toLocationId;
+
+      if (!toLocationId) {
+        throw new Error("Location destino inválida");
+      }
+
+      const productIds = transfer.items.map((i) => i.productId);
+
+      const sourceInventories = await tx.inventory.findMany({
+        where: {
+          locationId: fromLocationId,
+          productId: {
+            in: productIds,
           },
         },
+      });
 
-        data: {
-          quantity: {
-            decrement: item.quantity,
+      const targetInventories = await tx.inventory.findMany({
+        where: {
+          locationId: toLocationId,
+          productId: {
+            in: productIds,
           },
         },
-      }),
-    );
+      });
 
-    const targetInventory = targetMap.get(item.productId);
+      const sourceMap = new Map(sourceInventories.map((i) => [i.productId, i]));
 
-    if (targetInventory) {
-      const cantidadActual = targetInventory.quantity;
+      const targetMap = new Map(targetInventories.map((i) => [i.productId, i]));
 
-      const costoActual = targetInventory.averageCost;
+      //////////////////////////////////////
+      // VALIDAR STOCK
+      //////////////////////////////////////
 
-      const totalActual = cantidadActual * costoActual;
+      for (const item of transfer.items) {
+        const sourceInventory = sourceMap.get(item.productId);
 
-      const totalNuevo = item.quantity * averageCost;
+        if (!sourceInventory) {
+          throw new Error(`Inventario origen no encontrado ${item.productId}`);
+        }
 
-      const nuevaCantidad = cantidadActual + item.quantity;
+        if (sourceInventory.quantity < item.quantity) {
+          throw new Error(`Stock insuficiente para producto ${item.productId}`);
+        }
+      }
 
-      const nuevoPromedio =
-        nuevaCantidad > 0
-          ? (totalActual + totalNuevo) / nuevaCantidad
-          : averageCost;
+      //////////////////////////////////////
+      // PROCESAR ITEMS
+      //////////////////////////////////////
 
-      queries.push(
-        prisma.inventory.update({
+      for (const item of transfer.items) {
+        const sourceInventory = sourceMap.get(item.productId)!;
+
+        const averageCost = sourceInventory.averageCost || 0;
+
+        //////////////////////////////////////
+        // DESCONTAR ORIGEN
+        //////////////////////////////////////
+
+        await tx.inventory.update({
           where: {
             productId_locationId: {
               productId: item.productId,
-              locationId: toLocationId,
+              locationId: fromLocationId,
             },
           },
-
           data: {
             quantity: {
-              increment: item.quantity,
+              decrement: item.quantity,
             },
-
-            averageCost: nuevoPromedio,
           },
-        }),
-      );
-    } else {
-      queries.push(
-        prisma.inventory.create({
+        });
+
+        //////////////////////////////////////
+        // DESTINO
+        //////////////////////////////////////
+
+        const targetInventory = targetMap.get(item.productId);
+
+        if (targetInventory) {
+          const cantidadActual = targetInventory.quantity;
+          const costoActual = targetInventory.averageCost;
+
+          const totalActual = cantidadActual * costoActual;
+          const totalNuevo = item.quantity * averageCost;
+
+          const nuevaCantidad = cantidadActual + item.quantity;
+
+          const nuevoPromedio =
+            nuevaCantidad > 0
+              ? (totalActual + totalNuevo) / nuevaCantidad
+              : averageCost;
+
+          await tx.inventory.update({
+            where: {
+              productId_locationId: {
+                productId: item.productId,
+                locationId: toLocationId,
+              },
+            },
+            data: {
+              quantity: {
+                increment: item.quantity,
+              },
+              averageCost: nuevoPromedio,
+            },
+          });
+        } else {
+          await tx.inventory.create({
+            data: {
+              productId: item.productId,
+              locationId: toLocationId,
+              quantity: item.quantity,
+              averageCost,
+            },
+          });
+        }
+
+        //////////////////////////////////////
+        // KARDEX
+        //////////////////////////////////////
+
+        await tx.stockMovement.create({
           data: {
             productId: item.productId,
-            locationId: toLocationId,
+            fromLocationId,
+            toLocationId,
             quantity: item.quantity,
-            averageCost,
+            type: "TRANSFER",
+            transferId: transfer.id,
+            unitCost: averageCost,
+            reference: transfer.transferCode,
           },
-        }),
-      );
-    }
+        });
+      }
 
-    queries.push(
-      prisma.stockMovement.create({
+      //////////////////////////////////////
+      // APROBAR TRANSFERENCIA
+      //////////////////////////////////////
+
+      await tx.transfer.update({
+        where: {
+          id: transferId,
+        },
         data: {
-          productId: item.productId,
+          status: "APPROVED",
+          approvedById,
+          approvedAt: new Date(),
+          executedAt: new Date(),
           fromLocationId,
-          toLocationId,
-          quantity: item.quantity,
-          type: "TRANSFER",
-          transferId: transfer.id,
-          unitCost: averageCost,
-          reference: transfer.transferCode,
         },
-      }),
-    );
-  }
+      });
 
-  queries.push(
-    prisma.transfer.update({
-      where: {
-        id: transferId,
-      },
-
-      data: {
-        status: "APPROVED",
-        approvedById,
-        approvedAt: new Date(),
-        executedAt: new Date(),
-        fromLocationId,
-      },
-    }),
-  );
-
-  await prisma.$transaction(queries);
-
-  return prisma.transfer.findUnique({
-    where: {
-      id: transferId,
-    },
-
-    include: {
-      fromLocation: true,
-      toLocation: true,
-      requestedBy: true,
-      approvedBy: true,
-      items: {
+      return tx.transfer.findUnique({
+        where: {
+          id: transferId,
+        },
         include: {
-          product: true,
+          fromLocation: true,
+          toLocation: true,
+
+          requestedBy: {
+            select: {
+              id: true,
+              name: true,
+              lastName: true,
+              email: true,
+              role: {
+                select: {
+                  name: true,
+                },
+              },
+            },
+          },
+
+          approvedBy: {
+            select: {
+              id: true,
+              name: true,
+              lastName: true,
+              email: true,
+              role: {
+                select: {
+                  name: true,
+                },
+              },
+            },
+          },
+
+          items: {
+            include: {
+              product: true,
+            },
+          },
         },
-      },
+      });
     },
-  });
+    {
+      timeout: 15000,
+    },
+  );
 };
 
 export const rejectTransferRepo = async (

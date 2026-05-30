@@ -70,7 +70,7 @@ export const createEmployee = async (req: Request, res: Response) => {
 
     // GENERAR PASSWORD
     const generatedPassword = generatePassword(name, lastName, numeral);
-
+    console.log(generatedPassword)
     // HASHEAR
     const saltRounds = 10;
 
