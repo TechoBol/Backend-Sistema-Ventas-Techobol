@@ -23,6 +23,7 @@ export const sendEmployeeCredentials = async ({
 
         <p>Tu cuenta ha sido creada correctamente.</p>
 
+        <p><b>Sistema:</b> ${process.env.FRONTED_URL}</p>
         <p><b>Correo:</b> ${email}</p>
         <p><b>Contraseña:</b> ${password}</p>
 

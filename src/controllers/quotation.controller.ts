@@ -7,6 +7,7 @@ import {
   createQuotationDetailRepo,
   incrementQuotationCounterRepo,
   getQuotationsRepo,
+  getQuotationsByCustomerRepo,
 } from "../repository/quotation.repository";
 
 // =====================================================
@@ -94,20 +95,31 @@ export const createQuotation = async (req: Request, res: Response) => {
               });
               exists = !!existingCode;
             }
+            try {
+              existingCustomer = await tx.customer.create({
+                data: {
+                  name,
+                  code: customerCode,
+                  nitCi: ci ? ci.trim() : "S/N",
+                  businessName: businessName || name,
+                  phone,
+                  ...(whatsapp && { whatsapp }),
+                  ...(originChannel && { originChannel }),
+                },
+              });
+            } catch (createErr: any) {
+              if (createErr.code === "P2002") {
+                // Race condition o trim issue — buscarlo directamente
+                existingCustomer = await tx.customer.findUnique({
+                  where: { nitCi: ci ? ci.trim() : "S/N" },
+                });
+                if (!existingCustomer) throw createErr;
+              } else {
+                throw createErr;
+              }
+            }
 
-            existingCustomer = await tx.customer.create({
-              data: {
-                name,
-                code: customerCode,
-                nitCi: ci || "S/N",
-                businessName: businessName || name,
-                phone,
-                ...(whatsapp && { whatsapp }),
-                ...(originChannel && { originChannel }),
-              },
-            });
-
-            if (address) {
+            if (address && existingCustomer) {
               await tx.customerAddress.create({
                 data: {
                   customerId: existingCustomer.id,
@@ -154,6 +166,7 @@ export const createQuotation = async (req: Request, res: Response) => {
           notes: notes || null,
           expiresAt: expiresAt ? new Date(expiresAt) : null,
           status: "PENDING",
+          pdfUrl: `MEGADIS/QUOTATIONS/${code}.pdf`,
         });
 
         //////////////////////////////////////////////////////
@@ -234,7 +247,6 @@ export const getQuotations = async (req: Request, res: Response) => {
     const isManagement = user.level === 1 || user.level === 4;
 
     const data = await getQuotationsRepo(Number(user.locationId), isManagement);
-
     return res.json(data);
   } catch (error) {
     console.error("❌ ERROR GET QUOTATIONS:", error);
@@ -473,6 +485,19 @@ export const convertQuotationToSale = async (req: Request, res: Response) => {
     console.error("❌ ERROR CONVERT QUOTATION:", err);
     return res.status(500).json({
       message: err.message || "No se pudo convertir la cotización",
+    });
+  }
+};
+
+export const getQuotationsByCustomer = async (req: Request, res: Response) => {
+  try {
+    const { customerId } = req.params;
+    const data = await getQuotationsByCustomerRepo(Number(customerId));
+    return res.json(data);
+  } catch (error) {
+    console.error("❌ ERROR GET QUOTATIONS BY CUSTOMER:", error);
+    return res.status(500).json({
+      message: "No se pudieron obtener las cotizaciones del cliente",
     });
   }
 };

@@ -1,5 +1,8 @@
 import prisma from '../config/db'
 
+const HORA_INICIO = 8;
+const HORA_FIN = 18;
+
 export const getDashboardSummary = async () => {
   const today = new Date();
 
@@ -8,6 +11,9 @@ export const getDashboardSummary = async () => {
 
   const endDay = new Date(today);
   endDay.setHours(23, 59, 59, 999);
+
+  const startMonth = new Date(today.getFullYear(), today.getMonth(), 1, 0, 0, 0, 0);
+  const endMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999);
 
   // =====================================================
   // KPIs
@@ -24,10 +30,12 @@ export const getDashboardSummary = async () => {
       _sum: { total: true },
     }),
     prisma.sale.aggregate({
-      where: { status: "COMPLETED" },
+      where: { status: "COMPLETED", date: { gte: startMonth, lte: endMonth } },
       _sum: { total: true },
     }),
-    prisma.sale.count({ where: { status: "COMPLETED" } }),
+    prisma.sale.count({
+      where: { status: "COMPLETED", date: { gte: startMonth, lte: endMonth } },
+    }),
     prisma.sale.count({
       where: { status: "COMPLETED", date: { gte: startDay, lte: endDay } },
     }),
@@ -38,28 +46,40 @@ export const getDashboardSummary = async () => {
   // =====================================================
 
   const ultimos5Dias = await Promise.all(
-    Array.from({ length: 5 }, (_, i) => {
-      const offset = 4 - i;
-      const start = new Date();
-      start.setDate(start.getDate() - offset);
-      start.setHours(0, 0, 0, 0);
+    (() => {
+      const diasConfig: { start: Date; end: Date; label: string }[] = [];
+      let offset = 1;
 
-      const end = new Date();
-      end.setDate(end.getDate() - offset);
-      end.setHours(23, 59, 59, 999);
+      while (diasConfig.length < 5) {
+        const start = new Date();
+        start.setDate(start.getDate() - offset);
+        start.setHours(0, 0, 0, 0);
 
-      const label =
-        offset === 0
-          ? "Hoy"
-          : start.toLocaleDateString("es-BO", { weekday: "short" });
+        if (start.getDay() !== 0) {
+          const end = new Date(start);
+          end.setHours(23, 59, 59, 999);
+          const label = start.toLocaleDateString("es-BO", { weekday: "short" });
+          diasConfig.push({ start, end, label });
+        }
 
-      return prisma.sale
-        .aggregate({
-          where: { status: "COMPLETED", date: { gte: start, lte: end } },
-          _sum: { total: true },
-        })
-        .then((total) => ({ dia: label, total: total._sum.total || 0 }));
-    })
+        offset++;
+      }
+
+      // 👇 Invertir para que queden del más antiguo al más reciente
+      diasConfig.reverse();
+
+      // Agregar hoy al final
+      diasConfig.push({ start: startDay, end: endDay, label: "Hoy" });
+
+      return diasConfig.map(({ start, end, label }) =>
+        prisma.sale
+          .aggregate({
+            where: { status: "COMPLETED", date: { gte: start, lte: end } },
+            _sum: { total: true },
+          })
+          .then((r) => ({ dia: label, total: r._sum.total || 0 }))
+      );
+    })()
   );
 
   // =====================================================
@@ -87,11 +107,13 @@ export const getDashboardSummary = async () => {
   });
 
   const horasMap: Record<number, number> = {};
-  for (let h = 0; h < 24; h++) horasMap[h] = 0;
+  for (let h = HORA_INICIO; h < HORA_FIN; h++) horasMap[h] = 0;
 
   ventasHoyDetalle.forEach((sale) => {
     const hour = new Date(sale.date).getHours();
-    horasMap[hour]++;
+    if (hour >= HORA_INICIO && hour < HORA_FIN) {
+      horasMap[hour]++;
+    }
   });
 
   const hora_pico = Object.entries(horasMap)

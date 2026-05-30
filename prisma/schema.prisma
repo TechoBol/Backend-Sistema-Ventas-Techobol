@@ -346,6 +346,7 @@ model Quotation {
   details QuotationDetail[]
   sales   Sale[] // si se convierte en venta
 
+  pdfUrl    String?
   createdAt DateTime @default(now())
 }
 
