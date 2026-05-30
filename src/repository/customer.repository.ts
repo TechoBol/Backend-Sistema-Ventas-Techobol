@@ -45,6 +45,7 @@ export const getCustomerById = async (id: number) => {
         select: {
           id: true,
           code: true,
+          pdfUrl: true,
           date: true,
           total: true,
           typeSale: true,

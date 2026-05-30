@@ -155,6 +155,7 @@ export const createQuotation = async (req: Request, res: Response) => {
           notes: notes || null,
           expiresAt: expiresAt ? new Date(expiresAt) : null,
           status: "PENDING",
+          pdfUrl: `MEGADIS/QUOTATIONS/${code}.pdf`,
         });
 
         //////////////////////////////////////////////////////

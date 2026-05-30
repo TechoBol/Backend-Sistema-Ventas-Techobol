@@ -69,6 +69,7 @@ export const getQuotationsByCustomerRepo = async (customerId: number) => {
     select: {
       id: true,
       code: true,
+      pdfUrl: true,
       total: true,
       status: true,
       createdAt: true,
