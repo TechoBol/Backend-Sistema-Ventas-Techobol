@@ -236,7 +236,6 @@ export const getQuotations = async (req: Request, res: Response) => {
     const isManagement = user.level === 1 || user.level === 4;
 
     const data = await getQuotationsRepo(Number(user.locationId), isManagement);
-
     return res.json(data);
   } catch (error) {
     console.error("❌ ERROR GET QUOTATIONS:", error);

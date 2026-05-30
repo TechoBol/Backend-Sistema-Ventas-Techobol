@@ -79,6 +79,11 @@ export const getQuotationsByCustomerRepo = async (customerId: number) => {
       employee: {
         select: { name: true, lastName: true },
       },
+      customer: {
+        select: {
+          nitCi: true,
+        },
+      },
     },
   });
 };
