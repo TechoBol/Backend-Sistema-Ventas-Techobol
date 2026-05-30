@@ -20,6 +20,8 @@ import jwt from "jsonwebtoken";
 // =====================================================
 
 export const createSale = async (req: Request, res: Response) => {
+  console.log("BODY COMPLETO:");
+  console.log(req.body);
   try {
     const {
       locationId,
@@ -39,6 +41,7 @@ export const createSale = async (req: Request, res: Response) => {
       generateInvoice,
       bankName,
       businessName,
+      occupation, // 👈 agregado
     } = req.body;
 
     const token = req.headers["x-access-token"] as string;
@@ -81,10 +84,21 @@ export const createSale = async (req: Request, res: Response) => {
 
         if (req.body.customerId) {
           ////////////////////////////////////////////////////
-          // 🔥 CLIENTE YA SELECCIONADO — usar directo
+          // CASO 1: Cliente ya seleccionado — actualizar datos
           ////////////////////////////////////////////////////
 
           customerId = Number(req.body.customerId);
+
+          await tx.customer.update({
+            where: { id: customerId },
+            data: {
+              ...(name && { name }),
+              ...(phone && { phone }),
+              ...(whatsapp && { whatsapp }),
+              ...(originChannel && { originChannel }),
+              ...(occupation && { occupation }),
+            },
+          });
 
           if (address) {
             const existingAddress = await tx.customerAddress.findFirst({
@@ -108,7 +122,7 @@ export const createSale = async (req: Request, res: Response) => {
 
         } else if (ci || name) {
           ////////////////////////////////////////////////////
-          // 🔥 CLIENTE NUEVO — buscar o crear
+          // CASO 2: Sin customerId — buscar por CI o crear
           ////////////////////////////////////////////////////
 
           let existingCustomer = null;
@@ -120,6 +134,10 @@ export const createSale = async (req: Request, res: Response) => {
           }
 
           if (!existingCustomer) {
+            //////////////////////////////////////////////////
+            // CASO 2A: Cliente nuevo — crear
+            //////////////////////////////////////////////////
+
             const generateCustomerCode = (length = 8) => {
               const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
               let result = "";
@@ -139,6 +157,11 @@ export const createSale = async (req: Request, res: Response) => {
               exists = !!existingCode;
             }
 
+            console.log({
+              ci,
+              nitCiToSave: ci || "S/N"
+            });
+
             existingCustomer = await tx.customer.create({
               data: {
                 name,
@@ -148,6 +171,7 @@ export const createSale = async (req: Request, res: Response) => {
                 phone,
                 ...(whatsapp && { whatsapp }),
                 ...(originChannel && { originChannel }),
+                ...(occupation && { occupation }),
               },
             });
 
@@ -163,7 +187,23 @@ export const createSale = async (req: Request, res: Response) => {
               });
               customerAddressId = newAddress.id;
             }
+
           } else {
+            //////////////////////////////////////////////////
+            // CASO 2B: Cliente encontrado por CI — actualizar
+            //////////////////////////////////////////////////
+
+            await tx.customer.update({
+              where: { id: existingCustomer.id },
+              data: {
+                ...(name && { name }),
+                ...(phone && { phone }),
+                ...(whatsapp && { whatsapp }),
+                ...(originChannel && { originChannel }),
+                ...(occupation && { occupation }),
+              },
+            });
+
             if (address) {
               const existingAddress = await tx.customerAddress.findFirst({
                 where: { customerId: existingCustomer.id, address },

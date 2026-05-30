@@ -61,3 +61,28 @@ export const getQuotationsRepo = async (locationId: number, isManagement: boolea
     },
   });
 };
+
+export const getQuotationsByCustomerRepo = async (customerId: number) => {
+  return prisma.quotation.findMany({
+    where: { customerId },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      code: true,
+      total: true,
+      status: true,
+      createdAt: true,
+      location: {
+        select: { name: true },
+      },
+      employee: {
+        select: { name: true, lastName: true },
+      },
+      customer: {
+        select: {
+          nitCi: true,
+        },
+      },
+    },
+  });
+};
