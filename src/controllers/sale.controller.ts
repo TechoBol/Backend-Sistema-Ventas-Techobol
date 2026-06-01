@@ -323,6 +323,7 @@ export const createSale = async (req: Request, res: Response) => {
             customer: true,
             location: true,
             employee: true,
+            customerAddress: true,
             details: {
               include: {
                 product: true,
