@@ -105,14 +105,14 @@ model Product {
   lineId Int?
 
   brandName        String?
-  quantityDiscount Float   @default(10)
-  bossDiscount     Float   @default(25)
+  quantityDiscount Float   @default(0)
+  bossDiscount     Float   @default(0)
 
   productUnits      ProductUnit[]
   inventories       Inventory[]
   movements         StockMovement[]
   saleDetails       SaleDetail[]
-  quotationDetails  QuotationDetail[] // ✅ nuevo
+  quotationDetails  QuotationDetail[]
   transferItems     TransferItem[]
   ImportacionDetail ImportacionDetail[]
 }

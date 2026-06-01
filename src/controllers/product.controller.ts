@@ -35,6 +35,7 @@ export const createProduct = async (req: Request, res: Response) => {
       locationId,
 
       productUnits,
+      porcentajeGanancia
     } = req.body;
 
     //////////////////////////////////////////////////////
@@ -178,6 +179,8 @@ export const createProduct = async (req: Request, res: Response) => {
           purchasePrice: Number(averageCost || 0),
 
           salePrice: Number(defaultPresentation.salePrice),
+              porcentajeGanancia: Number(porcentajeGanancia || 0),
+
         },
       });
 
