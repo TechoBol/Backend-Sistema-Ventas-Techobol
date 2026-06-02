@@ -1439,26 +1439,17 @@ export const getKardexRepository = async (body: any) => {
 
 export const updateMargenProductRepo = async (
   id: number,
-
   porcentajeGanancia: number,
-
   quantityDiscount: number,
-
   bossDiscount: number,
 ) => {
   return prisma.$transaction(async (tx) => {
     //////////////////////////////////////////////////////
     // PRODUCTO
     //////////////////////////////////////////////////////
-
     const product = await tx.product.findUnique({
-      where: {
-        id,
-      },
-
-      include: {
-        productUnits: true,
-      },
+      where: { id },
+      include: { productUnits: true },
     });
 
     if (!product) {
@@ -1466,88 +1457,56 @@ export const updateMargenProductRepo = async (
     }
 
     //////////////////////////////////////////////////////
-    // COSTO BASE
+    // BASE COST
     //////////////////////////////////////////////////////
-
-    const purchasePrice = Number(product.purchasePrice || 0);
-
-    //////////////////////////////////////////////////////
-    // IVA 14.94%
-    //////////////////////////////////////////////////////
-
-    const costWithIVA = purchasePrice * 1.1494;
+    const baseCost = Number(product.purchasePrice || 0);
+    const IVA = 1.1494;
+    const margin = Number(porcentajeGanancia || 0) / 100;
 
     //////////////////////////////////////////////////////
-    // NUEVO PRECIO
+    // PRECIO UNITARIO BASE
     //////////////////////////////////////////////////////
-
-    const newSalePrice =
-      costWithIVA *
-      (1 + Number(porcentajeGanancia || 0) / 100);
+    const baseUnitPrice = baseCost * IVA * (1 + margin);
+    const roundedBasePrice = Math.round(baseUnitPrice);
 
     //////////////////////////////////////////////////////
-    // REDONDEAR
+    // PRECIO ACTUAL BASE (para calcular ratios)
     //////////////////////////////////////////////////////
-
-    const roundedSalePrice = Math.round(newSalePrice);
+    const currentBasePrice = Number(product.salePrice || 1);
 
     //////////////////////////////////////////////////////
-    // UPDATE PRODUCT
+    // UPDATE PRODUCTO
     //////////////////////////////////////////////////////
-
     await tx.product.update({
-      where: {
-        id,
-      },
-
+      where: { id },
       data: {
-        porcentajeGanancia:
-          Number(porcentajeGanancia),
-
-        quantityDiscount:
-          Number(quantityDiscount),
-
-        bossDiscount:
-          Number(bossDiscount),
-
-        salePrice: roundedSalePrice,
+        porcentajeGanancia: Number(porcentajeGanancia),
+        quantityDiscount: Number(quantityDiscount),
+        bossDiscount: Number(bossDiscount),
+        salePrice: roundedBasePrice,
       },
     });
 
     //////////////////////////////////////////////////////
-    // UPDATE PRESENTACIONES
+    // PRESENTACIONES
     //////////////////////////////////////////////////////
-
     for (const unit of product.productUnits) {
-      const equivalence = Number(
-        unit.equivalence || 1,
-      );
+      const currentUnitPrice = Number(unit.salePrice || 0);
 
-      ////////////////////////////////////////////////////
-      // PRECIO PRESENTACIÓN
-      ////////////////////////////////////////////////////
+      //////////////////////////////////////////////////////
+      // RATIO PROPORCIONAL RESPECTO AL PRECIO BASE ACTUAL
+      //////////////////////////////////////////////////////
+      const ratio = currentUnitPrice / currentBasePrice;
 
-      const unitSalePrice =
-        newSalePrice * equivalence;
-
-      ////////////////////////////////////////////////////
-      // REDONDEAR
-      ////////////////////////////////////////////////////
-
-      const roundedUnitPrice =
-        Math.round(unitSalePrice);
-
-      ////////////////////////////////////////////////////
-      // UPDATE
-      ////////////////////////////////////////////////////
+      //////////////////////////////////////////////////////
+      // NUEVO PRECIO ESCALADO
+      //////////////////////////////////////////////////////
+      const newUnitSalePrice = roundedBasePrice * ratio;
 
       await tx.productUnit.update({
-        where: {
-          id: unit.id,
-        },
-
+        where: { id: unit.id },
         data: {
-          salePrice: roundedUnitPrice,
+          salePrice: Math.round(newUnitSalePrice),
         },
       });
     }
@@ -1555,27 +1514,16 @@ export const updateMargenProductRepo = async (
     //////////////////////////////////////////////////////
     // RETURN
     //////////////////////////////////////////////////////
-
     return tx.product.findUnique({
-      where: {
-        id,
-      },
-
+      where: { id },
       include: {
         line: true,
-
         baseUnit: true,
-
         productUnits: {
-          include: {
-            unit: true,
-          },
+          include: { unit: true },
         },
-
         inventories: {
-          include: {
-            location: true,
-          },
+          include: { location: true },
         },
       },
     });
