@@ -49,13 +49,16 @@ export const createSale = async (req: Request, res: Response) => {
 
     const sale = await prisma.$transaction(
       async (tx) => {
-
         //////////////////////////////////////////////////////
         // 🔥 VALIDAR STOCK
         //////////////////////////////////////////////////////
 
         for (const item of products) {
-          const inventory = await getInventoryRepo(tx, item.productId, locationId);
+          const inventory = await getInventoryRepo(
+            tx,
+            item.productId,
+            locationId,
+          );
           const realQuantity = Number(item.quantity) * Number(item.equivalence);
 
           if (!inventory || inventory.quantity < realQuantity) {
@@ -119,7 +122,6 @@ export const createSale = async (req: Request, res: Response) => {
               customerAddressId = existingAddress.id;
             }
           }
-
         } else if (ci || name) {
           ////////////////////////////////////////////////////
           // CASO 2: Sin customerId — buscar por CI o crear
@@ -139,10 +141,13 @@ export const createSale = async (req: Request, res: Response) => {
             //////////////////////////////////////////////////
 
             const generateCustomerCode = (length = 8) => {
-              const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+              const chars =
+                "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
               let result = "";
               for (let i = 0; i < length; i++) {
-                result += chars.charAt(Math.floor(Math.random() * chars.length));
+                result += chars.charAt(
+                  Math.floor(Math.random() * chars.length),
+                );
               }
               return result;
             };
@@ -159,7 +164,7 @@ export const createSale = async (req: Request, res: Response) => {
 
             console.log({
               ci,
-              nitCiToSave: ci || "S/N"
+              nitCiToSave: ci || "S/N",
             });
 
             existingCustomer = await tx.customer.create({
@@ -187,7 +192,6 @@ export const createSale = async (req: Request, res: Response) => {
               });
               customerAddressId = newAddress.id;
             }
-
           } else {
             //////////////////////////////////////////////////
             // CASO 2B: Cliente encontrado por CI — actualizar
@@ -274,18 +278,28 @@ export const createSale = async (req: Request, res: Response) => {
 
         for (const item of products) {
           const product = await getProductRepo(tx, item.productId);
-          if (!product) throw new Error(`Producto ID ${item.productId} no encontrado`);
+          if (!product)
+            throw new Error(`Producto ID ${item.productId} no encontrado`);
 
           const productUnit = await getProductUnitRepo(tx, item.productUnitId);
-          if (!productUnit) throw new Error(`Unidad ID ${item.productUnitId} no encontrada`);
+          if (!productUnit)
+            throw new Error(`Unidad ID ${item.productUnitId} no encontrada`);
 
-          const inventory = await getInventoryRepo(tx, item.productId, locationId);
-          if (!inventory) throw new Error(`Inventario no encontrado para producto ID ${item.productId}`);
+          const inventory = await getInventoryRepo(
+            tx,
+            item.productId,
+            locationId,
+          );
+          if (!inventory)
+            throw new Error(
+              `Inventario no encontrado para producto ID ${item.productId}`,
+            );
 
           const realQuantity = Number(item.quantity) * Number(item.equivalence);
           const unitPrice = Number(productUnit.salePrice);
           const itemDiscount = Number(item.itemDiscount || 0);
-          const detailSubtotal = unitPrice * Number(item.quantity) - itemDiscount;
+          const detailSubtotal =
+            unitPrice * Number(item.quantity) - itemDiscount;
 
           await createSaleDetailRepo(tx, {
             saleId: newSale.id,
@@ -299,7 +313,12 @@ export const createSale = async (req: Request, res: Response) => {
             subtotal: detailSubtotal,
           });
 
-          await updateInventoryRepo(tx, item.productId, locationId, realQuantity);
+          await updateInventoryRepo(
+            tx,
+            item.productId,
+            locationId,
+            realQuantity,
+          );
 
           await createStockMovementRepo(tx, {
             productId: item.productId,
@@ -323,6 +342,7 @@ export const createSale = async (req: Request, res: Response) => {
             customer: true,
             location: true,
             employee: true,
+            customerAddress: true,
             details: {
               include: {
                 product: true,
@@ -382,7 +402,9 @@ export const updateSalePaymentMethod = async (req: Request, res: Response) => {
     }
 
     if (sale.paymentMethodChanged) {
-      return res.status(400).json({ error: "El método de pago ya fue cambiado anteriormente" });
+      return res
+        .status(400)
+        .json({ error: "El método de pago ya fue cambiado anteriormente" });
     }
 
     const updated = await prisma.sale.update({
@@ -405,7 +427,9 @@ export const updateSalePaymentMethod = async (req: Request, res: Response) => {
 
     return res.json(updated);
   } catch (error) {
-    return res.status(500).json({ error: "Error al actualizar método de pago" });
+    return res
+      .status(500)
+      .json({ error: "Error al actualizar método de pago" });
   }
 };
 
@@ -425,7 +449,9 @@ export const updateSaleDate = async (req: Request, res: Response) => {
     }
 
     if (sale.dateChanged) {
-      return res.status(400).json({ error: "La fecha ya fue modificada anteriormente" });
+      return res
+        .status(400)
+        .json({ error: "La fecha ya fue modificada anteriormente" });
     }
 
     const parsedDate = new Date(date);

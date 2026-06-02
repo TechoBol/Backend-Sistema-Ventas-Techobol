@@ -35,7 +35,7 @@ export const createProduct = async (req: Request, res: Response) => {
       locationId,
 
       productUnits,
-      porcentajeGanancia
+      porcentajeGanancia,
     } = req.body;
 
     //////////////////////////////////////////////////////
@@ -179,8 +179,7 @@ export const createProduct = async (req: Request, res: Response) => {
           purchasePrice: Number(averageCost || 0),
 
           salePrice: Number(defaultPresentation.salePrice),
-              porcentajeGanancia: Number(porcentajeGanancia || 0),
-
+          porcentajeGanancia: Number(porcentajeGanancia || 0),
         },
       });
 
@@ -189,22 +188,27 @@ export const createProduct = async (req: Request, res: Response) => {
       ////////////////////////////////////////////////
 
       const createdPresentations = [];
+      
+      const baseCost = Number(averageCost || 0);
 
       for (const item of productUnits) {
         const unit = unitMap.get(item.unitCode);
 
+        const equivalence = Number(item.equivalence || 1);
+
+        // 🔥 costo proporcional por unidad
+        const unitPurchasePrice = baseCost * equivalence;
+
         const created = await tx.productUnit.create({
           data: {
             productId: product.id,
-
             unitId: unit.id,
+            equivalence,
 
-            equivalence: Number(item.equivalence),
-
-            purchasePrice: Number(averageCost || 0),
+            // ✔️ AQUÍ está la corrección real
+            purchasePrice: unitPurchasePrice,
 
             salePrice: Number(item.salePrice),
-
             isDefault: item.isDefault || false,
           },
         });
@@ -307,7 +311,8 @@ export const getProducts = async (req: Request, res: Response) => {
 
     const user = jwt.verify(token, process.env.JWTSECRET!) as any;
 
-    const isManagement = user.level === 1 || user.level === 4;
+    const isManagement =
+      user.level === 1 || user.level === 2 || user.level === 5;
 
     const products = await getProductsRepo(
       Number(user.locationId),
