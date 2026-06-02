@@ -11,6 +11,7 @@ import {
   getSalesRepo,
   createStockMovementRepo,
   getProductUnitRepo,
+  getSaleByIdTxRepo,
 } from "../repository/sale.repository";
 
 import jwt from "jsonwebtoken";
@@ -41,7 +42,8 @@ export const createSale = async (req: Request, res: Response) => {
       generateInvoice,
       bankName,
       businessName,
-      occupation, // 👈 agregado
+      occupation,
+      nitId,
     } = req.body;
 
     const token = req.headers["x-access-token"] as string;
@@ -66,6 +68,32 @@ export const createSale = async (req: Request, res: Response) => {
               `Stock insuficiente para producto ID ${item.productId}. Disponible: ${inventory?.quantity || 0}`,
             );
           }
+        }
+
+        //////////////////////////////////////////////////////
+        // 🔥 SNAPSHOT DEL NIT SELECCIONADO
+        //////////////////////////////////////////////////////
+
+        let customerNitSnapshot: string | null = null;
+        let customerNitCompanySnapshot: string | null = null;
+
+        if (nitId) {
+          console.log("NIT ID:", nitId);
+
+          const selectedNit = await tx.customerNit.findUnique({
+            where: { id: Number(nitId) },
+          });
+
+          console.log("SELECTED NIT:", selectedNit);
+
+          if (selectedNit) {
+            customerNitSnapshot = selectedNit.number;
+            customerNitCompanySnapshot = selectedNit.companyName ?? null;
+          }
+        } else if (ci) {
+          // Fallback: si no mandaron nitId pero sí ci, usarlo directamente
+          customerNitSnapshot = ci;
+          customerNitCompanySnapshot = businessName || null;
         }
 
         //////////////////////////////////////////////////////
@@ -103,6 +131,27 @@ export const createSale = async (req: Request, res: Response) => {
             },
           });
 
+          // Si viene un CI, upsert en CustomerNit
+          if (ci) {
+            await tx.customerNit.upsert({
+              where: {
+                customerId_number: {
+                  customerId,
+                  number: ci,
+                },
+              },
+              update: {
+                ...(businessName && { companyName: businessName }),
+              },
+              create: {
+                customerId,
+                number: ci,
+                companyName: businessName || null,
+                isPrimary: false,
+              },
+            });
+          }
+
           if (address) {
             const existingAddress = await tx.customerAddress.findFirst({
               where: { customerId, address },
@@ -130,9 +179,11 @@ export const createSale = async (req: Request, res: Response) => {
           let existingCustomer = null;
 
           if (ci) {
-            existingCustomer = await tx.customer.findUnique({
-              where: { nitCi: ci },
+            const customerNit = await tx.customerNit.findFirst({
+              where: { number: ci },
+              include: { customer: true },
             });
+            existingCustomer = customerNit?.customer ?? null;
           }
 
           if (!existingCustomer) {
@@ -171,12 +222,21 @@ export const createSale = async (req: Request, res: Response) => {
               data: {
                 name,
                 code: customerCode,
-                nitCi: ci || "S/N",
                 businessName: businessName || name,
                 phone,
                 ...(whatsapp && { whatsapp }),
                 ...(originChannel && { originChannel }),
                 ...(occupation && { occupation }),
+                // Crear el NIT asociado directamente en la relación
+                ...(ci && {
+                  nits: {
+                    create: {
+                      number: ci,
+                      companyName: businessName || null,
+                      isPrimary: true,
+                    },
+                  },
+                }),
               },
             });
 
@@ -207,6 +267,17 @@ export const createSale = async (req: Request, res: Response) => {
                 ...(occupation && { occupation }),
               },
             });
+
+            // Actualizar el nombre de empresa en el NIT si vino businessName
+            if (ci && businessName) {
+              await tx.customerNit.updateMany({
+                where: {
+                  customerId: existingCustomer.id,
+                  number: ci,
+                },
+                data: { companyName: businessName },
+              });
+            }
 
             if (address) {
               const existingAddress = await tx.customerAddress.findFirst({
@@ -252,6 +323,10 @@ export const createSale = async (req: Request, res: Response) => {
         //////////////////////////////////////////////////////
         // 🔥 CREAR VENTA
         //////////////////////////////////////////////////////
+        console.log({
+          customerNitSnapshot,
+          customerNitCompanySnapshot,
+        });
 
         const newSale = await createSaleRepo(tx, {
           employeeId: Number(user.id),
@@ -270,7 +345,13 @@ export const createSale = async (req: Request, res: Response) => {
           bankName: bankName || null,
           transactionNumber: codigoTransaccion || null,
           generateInvoice: generateInvoice || false,
+          customerNitSnapshot,
+          customerNitCompanySnapshot,
+
+          customerNitId: nitId ? Number(nitId) : null,
         });
+
+        console.log("SALE CREADA:", newSale);
 
         //////////////////////////////////////////////////////
         // 🔥 DETAILS + INVENTARIO + KARDEX
@@ -336,21 +417,8 @@ export const createSale = async (req: Request, res: Response) => {
         // 🔥 RETORNAR VENTA COMPLETA
         //////////////////////////////////////////////////////
 
-        return await tx.sale.findUnique({
-          where: { id: newSale.id },
-          include: {
-            customer: true,
-            location: true,
-            employee: true,
-            customerAddress: true,
-            details: {
-              include: {
-                product: true,
-                productUnit: { include: { unit: true } },
-              },
-            },
-          },
-        });
+        const saleResult = await getSaleByIdTxRepo(tx, newSale.id);
+        return saleResult;
       },
       { timeout: 15000 },
     );
@@ -414,7 +482,9 @@ export const updateSalePaymentMethod = async (req: Request, res: Response) => {
         paymentMethodChanged: true,
       },
       include: {
-        customer: true,
+        customer: {
+          include: { nits: true }, // 🔄 incluir nits
+        },
         location: { select: { name: true } },
         employee: { select: { name: true, lastName: true } },
         details: {
@@ -466,7 +536,9 @@ export const updateSaleDate = async (req: Request, res: Response) => {
         dateChanged: true,
       },
       include: {
-        customer: true,
+        customer: {
+          include: { nits: true },
+        },
         location: { select: { name: true } },
         employee: { select: { name: true, lastName: true } },
         details: {

@@ -14,13 +14,13 @@ model Location {
   address          String?
   abbreviation     String?
   saleCounter      Int          @default(0)
-  quotationCounter Int          @default(0) // ✅ nuevo
+  quotationCounter Int          @default(0)
   isVisible        Boolean      @default(true)
 
   employees   Employee[]
   inventories Inventory[]
   sales       Sale[]
-  quotations  Quotation[] // ✅ nuevo
+  quotations  Quotation[]
 
   fromMovements StockMovement[] @relation("FromLocation")
   toMovements   StockMovement[] @relation("ToLocation")
@@ -51,7 +51,7 @@ model Employee {
   isVisible Boolean @default(true)
 
   sales      Sale[]
-  quotations Quotation[] // ✅ nuevo
+  quotations Quotation[]
 
   requestedTransfers Transfer[] @relation("RequestedBy")
   approvedTransfers  Transfer[] @relation("ApprovedBy")
@@ -134,7 +134,7 @@ model ProductUnit {
   isDefault Boolean @default(false)
 
   saleDetails       SaleDetail[]
-  quotationDetails  QuotationDetail[] // ✅ nuevo
+  quotationDetails  QuotationDetail[]
   stockMovements    StockMovement[]
   transferItems     TransferItem[]
   ImportacionDetail ImportacionDetail[]
@@ -273,7 +273,7 @@ model Sale {
   transactionNumber String?
 
   bankName        String?
-  generateInvoice Boolean @default(false) // ✅ corregido (estaba solo en controller)
+  generateInvoice Boolean @default(false)
 
   paymentMethodChanged Boolean @default(false)
   dateChanged          Boolean @default(false)
@@ -283,7 +283,6 @@ model Sale {
   cancelledAt   DateTime?
   cancelledById Int?
 
-  // ✅ origen desde cotización
   quotation   Quotation? @relation(fields: [quotationId], references: [id])
   quotationId Int?
 
@@ -291,8 +290,14 @@ model Sale {
   customerAddressId Int?
 
   customerAddressSnapshot   String?
-  customerLatitudeSnapshot  Float? // ✅ corregido (era String en el controller)
-  customerLongitudeSnapshot Float? // ✅ corregido (era String en el controller)
+  customerLatitudeSnapshot  Float?
+  customerLongitudeSnapshot Float?
+
+  customerNit   CustomerNit? @relation(fields: [customerNitId], references: [id])
+  customerNitId Int?
+
+  customerNitSnapshot        String?
+  customerNitCompanySnapshot String?
 }
 
 enum SaleStatus {
@@ -320,7 +325,6 @@ model SaleDetail {
   subtotal     Float
 }
 
-// ✅ NUEVO
 model Quotation {
   id   Int      @id @default(autoincrement())
   code String   @unique
@@ -344,10 +348,17 @@ model Quotation {
   expiresAt DateTime?
 
   details QuotationDetail[]
-  sales   Sale[] // si se convierte en venta
+  sales   Sale[]
 
   pdfUrl    String?
   createdAt DateTime @default(now())
+
+  customerNitSnapshot        String?
+  customerNitCompanySnapshot String?
+
+  customerAddressSnapshot   String?
+  customerLatitudeSnapshot  Float?
+  customerLongitudeSnapshot Float?
 }
 
 enum QuotationStatus {
@@ -357,7 +368,6 @@ enum QuotationStatus {
   EXPIRED
 }
 
-// ✅ NUEVO
 model QuotationDetail {
   id Int @id @default(autoincrement())
 
@@ -382,9 +392,9 @@ model Customer {
   id Int @id @default(autoincrement())
 
   name         String
-  nitCi        String? @unique
+  nits         CustomerNit[]
   businessName String?
-  code         String? @unique
+  code         String?       @unique
   phone        String?
 
   whatsapp              String?
@@ -398,7 +408,7 @@ model Customer {
   addresses  CustomerAddress[]
   isVisible  Boolean           @default(true)
   sales      Sale[]
-  quotations Quotation[] // ✅ nuevo
+  quotations Quotation[]
   activities Activity[]
   notes      Note[]
 }
@@ -465,4 +475,19 @@ model ImportacionDetail {
   quantity Float
   unitCost Float
   subtotal Float
+}
+
+model CustomerNit {
+  id          Int      @id @default(autoincrement())
+  number      String
+  companyName String?
+  isPrimary   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  customer   Customer @relation(fields: [customerId], references: [id])
+  customerId Int
+
+  sales Sale[]
+
+  @@unique([customerId, number])
 }

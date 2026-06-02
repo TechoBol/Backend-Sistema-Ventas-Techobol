@@ -23,6 +23,7 @@ export const createQuotation = async (req: Request, res: Response) => {
       total,
       name,
       ci,
+      nitId,
       phone,
       whatsapp,
       originChannel,
@@ -58,25 +59,52 @@ export const createQuotation = async (req: Request, res: Response) => {
 
         if (req.body.customerId) {
           ////////////////////////////////////////////////////
-          // 🔥 CLIENTE YA SELECCIONADO — usar directo
+          // CASO 1: Cliente ya seleccionado — usar directo
           ////////////////////////////////////////////////////
 
           customerId = Number(req.body.customerId);
 
+          // Si viene un CI, upsert en CustomerNit
+          if (ci) {
+            await tx.customerNit.upsert({
+              where: {
+                customerId_number: {
+                  customerId,
+                  number: ci,
+                },
+              },
+              update: {
+                ...(businessName && { companyName: businessName }),
+              },
+              create: {
+                customerId,
+                number: ci,
+                companyName: businessName || null,
+                isPrimary: false,
+              },
+            });
+          }
+
         } else if (ci || name) {
           ////////////////////////////////////////////////////
-          // 🔥 CLIENTE NUEVO — buscar o crear
+          // CASO 2: Sin customerId — buscar por CI o crear
           ////////////////////////////////////////////////////
 
           let existingCustomer = null;
 
           if (ci) {
-            existingCustomer = await tx.customer.findUnique({
-              where: { nitCi: ci },
+            const customerNit = await tx.customerNit.findFirst({
+              where: { number: ci },
+              include: { customer: true },
             });
+            existingCustomer = customerNit?.customer ?? null;
           }
 
           if (!existingCustomer) {
+            //////////////////////////////////////////////////
+            // CASO 2A: Cliente nuevo — crear
+            //////////////////////////////////////////////////
+
             const generateCustomerCode = (length = 8) => {
               const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
               let result = "";
@@ -95,29 +123,26 @@ export const createQuotation = async (req: Request, res: Response) => {
               });
               exists = !!existingCode;
             }
-            try {
-              existingCustomer = await tx.customer.create({
-                data: {
-                  name,
-                  code: customerCode,
-                  nitCi: ci ? ci.trim() : "S/N",
-                  businessName: businessName || name,
-                  phone,
-                  ...(whatsapp && { whatsapp }),
-                  ...(originChannel && { originChannel }),
-                },
-              });
-            } catch (createErr: any) {
-              if (createErr.code === "P2002") {
-                // Race condition o trim issue — buscarlo directamente
-                existingCustomer = await tx.customer.findUnique({
-                  where: { nitCi: ci ? ci.trim() : "S/N" },
-                });
-                if (!existingCustomer) throw createErr;
-              } else {
-                throw createErr;
-              }
-            }
+
+            existingCustomer = await tx.customer.create({
+              data: {
+                name,
+                code: customerCode,
+                businessName: businessName || name,
+                phone,
+                ...(whatsapp && { whatsapp }),
+                ...(originChannel && { originChannel }),
+                ...(ci && {
+                  nits: {
+                    create: {
+                      number: ci,
+                      companyName: businessName || null,
+                      isPrimary: true,
+                    },
+                  },
+                }),
+              },
+            });
 
             if (address && existingCustomer) {
               await tx.customerAddress.create({
@@ -130,9 +155,72 @@ export const createQuotation = async (req: Request, res: Response) => {
                 },
               });
             }
+
+          } else {
+            //////////////////////////////////////////////////
+            // CASO 2B: Cliente encontrado por CI — actualizar
+            //////////////////////////////////////////////////
+
+            await tx.customer.update({
+              where: { id: existingCustomer.id },
+              data: {
+                ...(name && { name }),
+                ...(phone && { phone }),
+                ...(whatsapp && { whatsapp }),
+                ...(originChannel && { originChannel }),
+              },
+            });
+
+            // Actualizar companyName en el NIT si vino businessName
+            if (ci && businessName) {
+              await tx.customerNit.updateMany({
+                where: {
+                  customerId: existingCustomer.id,
+                  number: ci,
+                },
+                data: { companyName: businessName },
+              });
+            }
+
+            if (address) {
+              const existingAddress = await tx.customerAddress.findFirst({
+                where: { customerId: existingCustomer.id, address },
+              });
+
+              if (!existingAddress) {
+                await tx.customerAddress.create({
+                  data: {
+                    customerId: existingCustomer.id,
+                    address,
+                    latitude: latitude ? Number(latitude) : null,
+                    longitude: longitude ? Number(longitude) : null,
+                  },
+                });
+              }
+            }
           }
 
           customerId = existingCustomer.id;
+        }
+
+        //////////////////////////////////////////////////////
+        // 🔥 SNAPSHOT DEL NIT
+        //////////////////////////////////////////////////////
+
+        let customerNitSnapshot: string | null = null;
+        let customerNitCompanySnapshot: string | null = null;
+
+        if (nitId) {
+          const selectedNit = await tx.customerNit.findUnique({
+            where: { id: Number(nitId) },
+          });
+          if (selectedNit) {
+            customerNitSnapshot = selectedNit.number;
+            customerNitCompanySnapshot = selectedNit.companyName ?? null;
+          }
+        } else if (ci) {
+          customerNitSnapshot = ci;
+          customerNitCompanySnapshot = businessName || null;
         }
 
         //////////////////////////////////////////////////////
@@ -167,6 +255,11 @@ export const createQuotation = async (req: Request, res: Response) => {
           expiresAt: expiresAt ? new Date(expiresAt) : null,
           status: "PENDING",
           pdfUrl: `MEGADIS/QUOTATIONS/${code}.pdf`,
+          customerNitSnapshot,
+          customerNitCompanySnapshot,
+          customerAddressSnapshot: address || null,
+          customerLatitudeSnapshot: latitude ? Number(latitude) : null,
+          customerLongitudeSnapshot: longitude ? Number(longitude) : null,
         });
 
         //////////////////////////////////////////////////////
@@ -209,7 +302,9 @@ export const createQuotation = async (req: Request, res: Response) => {
         return await tx.quotation.findUnique({
           where: { id: newQuotation.id },
           include: {
-            customer: true,
+            customer: {
+              include: { nits: true }, // 🔄 incluir nits
+            },
             location: true,
             employee: true,
             details: {
@@ -285,7 +380,9 @@ export const updateQuotationStatus = async (req: Request, res: Response) => {
       where: { id: Number(id) },
       data: { status },
       include: {
-        customer: true,
+        customer: {
+          include: { nits: true }, // 🔄 incluir nits
+        },
         location: { select: { name: true } },
         employee: { select: { name: true, lastName: true } },
         details: {
@@ -356,6 +453,16 @@ export const convertQuotationToSale = async (req: Request, res: Response) => {
         }
 
         //////////////////////////////////////////////////////
+        // 🔥 SNAPSHOT DEL NIT DE LA COTIZACIÓN
+        //////////////////////////////////////////////////////
+
+        const customerNitSnapshot =
+          quotation.customerNitSnapshot ?? null;
+
+        const customerNitCompanySnapshot =
+          quotation.customerNitCompanySnapshot ?? null;
+
+        //////////////////////////////////////////////////////
         // 🔥 INCREMENTAR CONTADOR Y GENERAR CÓDIGO
         //////////////////////////////////////////////////////
 
@@ -385,6 +492,11 @@ export const convertQuotationToSale = async (req: Request, res: Response) => {
             transactionNumber: codigoTransaccion || null,
             generateInvoice: generateInvoice || false,
             quotationId: quotation.id,
+            customerNitSnapshot,
+            customerNitCompanySnapshot,
+            customerAddressSnapshot: quotation.customerAddressSnapshot ?? null,
+            customerLatitudeSnapshot: quotation.customerLatitudeSnapshot ?? null,
+            customerLongitudeSnapshot: quotation.customerLongitudeSnapshot ?? null,
           },
         });
 
@@ -462,7 +574,9 @@ export const convertQuotationToSale = async (req: Request, res: Response) => {
         return await tx.sale.findUnique({
           where: { id: newSale.id },
           include: {
-            customer: true,
+            customer: {
+              include: { nits: true }, // 🔄 incluir nits
+            },
             location: true,
             employee: true,
             details: {

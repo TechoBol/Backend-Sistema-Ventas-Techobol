@@ -1,16 +1,96 @@
 import prisma from "../config/db";
 
+// Include reutilizable para todas las queries que necesitan generar PDF
+const SALE_PDF_INCLUDE = {
+  customer: true,
+  location: true,               // trae address, name, abbreviation, etc.
+  employee: {
+    select: {
+      name: true,
+      lastName: true,
+    },
+  },
+  customerAddress: true,
+  customerNit: true,            // el registro CustomerNit relacionado
+  details: {
+    include: {
+      product: {
+        select: {
+          id: true,
+          name: true,
+          code: true,
+        },
+      },
+      productUnit: {
+        include: {
+          unit: true,
+        },
+      },
+    },
+  },
+} as const;
+
+// Select liviano para el listado (sin los datos pesados del PDF)
+const SALE_LIST_SELECT = {
+  id: true,
+  code: true,
+  subtotal: true,
+  total: true,
+  discount: true,
+  date: true,
+  pdfUrl: true,
+  typeSale: true,
+  transactionNumber: true,
+  bankName: true,
+  generateInvoice: true,
+  status: true,
+
+  customerNitSnapshot: true,
+  customerNitCompanySnapshot: true,
+  customerAddressSnapshot: true,
+
+  customer: true,
+
+  location: {
+    select: {
+      id: true,
+      name: true,
+      address: true,        // ← necesario para el PDF (cabecera empresa)
+      abbreviation: true,
+    },
+  },
+
+  employee: {
+    select: {
+      name: true,
+      lastName: true,
+    },
+  },
+
+  details: {
+    include: {
+      product: {
+        select: {
+          id: true,
+          name: true,
+          code: true,
+        },
+      },
+      productUnit: {
+        include: {
+          unit: true,
+        },
+      },
+    },
+  },
+} as const;
+
 //////////////////////////////////////////////////////////
 // 🔥 SALE
 //////////////////////////////////////////////////////////
 
-export const createSaleRepo = async (
-  tx: any,
-  data: any,
-) => {
-  return await tx.sale.create({
-    data,
-  });
+export const createSaleRepo = async (tx: any, data: any) => {
+  return await tx.sale.create({ data });
 };
 
 //////////////////////////////////////////////////////////
@@ -22,14 +102,9 @@ export const incrementLocationCounterRepo = async (
   locationId: number,
 ) => {
   return await tx.location.update({
-    where: {
-      id: locationId,
-    },
-
+    where: { id: locationId },
     data: {
-      saleCounter: {
-        increment: 1,
-      },
+      saleCounter: { increment: 1 },
     },
   });
 };
@@ -38,13 +113,8 @@ export const incrementLocationCounterRepo = async (
 // 🔥 SALE DETAIL
 //////////////////////////////////////////////////////////
 
-export const createSaleDetailRepo = async (
-  tx: any,
-  data: any,
-) => {
-  return await tx.saleDetail.create({
-    data,
-  });
+export const createSaleDetailRepo = async (tx: any, data: any) => {
+  return await tx.saleDetail.create({ data });
 };
 
 //////////////////////////////////////////////////////////
@@ -58,10 +128,7 @@ export const getInventoryRepo = async (
 ) => {
   return await tx.inventory.findUnique({
     where: {
-      productId_locationId: {
-        productId,
-        locationId,
-      },
+      productId_locationId: { productId, locationId },
     },
   });
 };
@@ -74,16 +141,10 @@ export const updateInventoryRepo = async (
 ) => {
   return await tx.inventory.update({
     where: {
-      productId_locationId: {
-        productId,
-        locationId,
-      },
+      productId_locationId: { productId, locationId },
     },
-
     data: {
-      quantity: {
-        decrement: qty,
-      },
+      quantity: { decrement: qty },
     },
   });
 };
@@ -92,33 +153,18 @@ export const updateInventoryRepo = async (
 // 🔥 PRODUCT
 //////////////////////////////////////////////////////////
 
-export const getProductRepo = async (
-  tx: any,
-  productId: number,
-) => {
-  return await tx.product.findUnique({
-    where: {
-      id: productId,
-    },
-  });
+export const getProductRepo = async (tx: any, productId: number) => {
+  return await tx.product.findUnique({ where: { id: productId } });
 };
 
 //////////////////////////////////////////////////////////
 // 🔥 PRODUCT UNIT
 //////////////////////////////////////////////////////////
 
-export const getProductUnitRepo = async (
-  tx: any,
-  productUnitId: number,
-) => {
+export const getProductUnitRepo = async (tx: any, productUnitId: number) => {
   return await tx.productUnit.findUnique({
-    where: {
-      id: productUnitId,
-    },
-
-    include: {
-      unit: true,
-    },
+    where: { id: productUnitId },
+    include: { unit: true },
   });
 };
 
@@ -126,17 +172,34 @@ export const getProductUnitRepo = async (
 // 🔥 STOCK MOVEMENT
 //////////////////////////////////////////////////////////
 
-export const createStockMovementRepo = async (
-  tx: any,
-  data: any,
-) => {
-  return await tx.stockMovement.create({
-    data,
+export const createStockMovementRepo = async (tx: any, data: any) => {
+  return await tx.stockMovement.create({ data });
+};
+
+//////////////////////////////////////////////////////////
+// 🔥 GET SALE BY ID (para PDF o detalle)
+//////////////////////////////////////////////////////////
+
+export const getSaleByIdRepo = async (id: number) => {
+  return prisma.sale.findUnique({
+    where: { id },
+    include: SALE_PDF_INCLUDE,
   });
 };
 
 //////////////////////////////////////////////////////////
-// 🔥 SALES
+// 🔥 GET SALE BY ID IN TRANSACTION (al final de createSale)
+//////////////////////////////////////////////////////////
+
+export const getSaleByIdTxRepo = async (tx: any, id: number) => {
+  return await tx.sale.findUnique({
+    where: { id },
+    include: SALE_PDF_INCLUDE,
+  });
+};
+
+//////////////////////////////////////////////////////////
+// 🔥 GET SALES (listado)
 //////////////////////////////////////////////////////////
 
 export const getSalesRepo = async (
@@ -144,71 +207,8 @@ export const getSalesRepo = async (
   isManagement: boolean,
 ) => {
   return prisma.sale.findMany({
-    where:
-      isManagement
-        ? {}
-        : {
-            locationId,
-          },
-
-    select: {
-      id: true,
-
-      code: true,
-
-      subtotal: true,
-
-      total: true,
-
-      date: true,
-
-      pdfUrl: true,
-
-      typeSale: true,
-
-      transactionNumber: true,
-
-      discount: true,
-
-      customer: true,
-
-      location: {
-        select: {
-          name: true,
-        },
-      },
-
-      employee: {
-        select: {
-          name: true,
-
-          lastName: true,
-        },
-      },
-
-      details: {
-        include: {
-          product: {
-            select: {
-              id: true,
-
-              name: true,
-
-              code: true,
-            },
-          },
-
-          productUnit: {
-            include: {
-              unit: true,
-            },
-          },
-        },
-      },
-    },
-
-    orderBy: {
-      date: "desc",
-    },
+    where: isManagement ? {} : { locationId },
+    select: SALE_LIST_SELECT,
+    orderBy: { date: "desc" },
   });
 };
