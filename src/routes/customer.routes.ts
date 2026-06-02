@@ -1,4 +1,4 @@
-import { Router } from 'express'
+import { Router } from "express";
 import {
   listCustomers,
   findCustomerById,
@@ -6,24 +6,28 @@ import {
   removeCustomer,
   storeAddress,
   removeAddress,
+  storeNit,
   storeNote,
   removeNote,
-} from '../controllers/customer.controller'
+} from "../controllers/customer.controller";
 
-const router = Router()
+const router = Router();
 
 // CRUD base
-router.get('/', listCustomers)
-router.get('/:id', findCustomerById)
-router.put('/:id', editCustomer)
-router.delete('/:id', removeCustomer)
+router.get("/", listCustomers);
+router.get("/:id", findCustomerById);
+router.put("/:id", editCustomer);
+router.delete("/:id", removeCustomer);
 
 // Direcciones
-router.post('/:id/addresses', storeAddress)
-router.delete('/:id/addresses/:addressId', removeAddress)
+router.post("/:id/addresses", storeAddress);
+router.delete("/:id/addresses/:addressId", removeAddress);
+
+// NITs
+router.post("/:id/nits", storeNit);
 
 // Notas
-router.post('/:id/notes', storeNote)
-router.delete('/:id/notes/:noteId', removeNote)
+router.post("/:id/notes", storeNote);
+router.delete("/:id/notes/:noteId", removeNote);
 
-export default router
+export default router;

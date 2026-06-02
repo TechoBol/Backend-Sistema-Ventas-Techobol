@@ -2,7 +2,6 @@ import prisma from "../config/db";
 
 export type CustomerUpdateInput = {
   name?: string;
-  nitCi?: string;
   businessName?: string;
   code?: string;
   phone?: string;
@@ -19,6 +18,9 @@ export const getCustomers = async () => {
         where: { isVisible: true },
         orderBy: { isPrimary: "desc" },
       },
+      nits: {
+        orderBy: { isPrimary: "desc" },
+      },
     },
     orderBy: { id: "asc" },
   });
@@ -30,6 +32,9 @@ export const getCustomerById = async (id: number) => {
     include: {
       addresses: {
         where: { isVisible: true },
+        orderBy: { isPrimary: "desc" },
+      },
+      nits: {
         orderBy: { isPrimary: "desc" },
       },
       activities: {
@@ -50,6 +55,8 @@ export const getCustomerById = async (id: number) => {
           total: true,
           typeSale: true,
           status: true,
+          customerNitSnapshot: true,
+          customerNitCompanySnapshot: true,
           employee: {
             select: {
               name: true,
@@ -59,11 +66,6 @@ export const getCustomerById = async (id: number) => {
           location: {
             select: {
               name: true,
-            },
-          },
-          customer: {
-            select: {
-              nitCi: true,
             },
           },
         },
@@ -103,7 +105,7 @@ export const deleteCustomer = async (id: number) => {
   });
 };
 
-// ── Direcciones ─────────────────────────────────────────────
+// ── Direcciones ──────────────────────────────────────────────
 
 export const addCustomerAddress = async (
   customerId: number,
@@ -139,6 +141,25 @@ export const removeCustomerAddress = async (addressId: number) => {
   return await prisma.customerAddress.update({
     where: { id: addressId },
     data: { isVisible: false },
+  });
+};
+
+// ── NITs ─────────────────────────────────────────────────────
+
+export const addCustomerNit = async (
+  customerId: number,
+  data: { number: string; companyName?: string },
+) => {
+  // Si es el primero que se agrega, lo marcamos como principal automáticamente
+  const existingCount = await prisma.customerNit.count({ where: { customerId } });
+
+  return await prisma.customerNit.create({
+    data: {
+      customerId,
+      number: data.number,
+      companyName: data.companyName ?? null,
+      isPrimary: existingCount === 0,
+    },
   });
 };
 
