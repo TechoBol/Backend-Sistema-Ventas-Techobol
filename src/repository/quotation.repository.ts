@@ -41,7 +41,11 @@ export const getQuotationsRepo = async (locationId: number, isManagement: boolea
       notes: true,
       expiresAt: true,
       createdAt: true,
-      customer: true,
+      customer: {
+        include: {
+          nits: true,
+        },
+      },
       location: {
         select: { name: true },
       },
@@ -73,16 +77,14 @@ export const getQuotationsByCustomerRepo = async (customerId: number) => {
       total: true,
       status: true,
       createdAt: true,
+      
+      customerNitSnapshot: true,
+
       location: {
         select: { name: true },
       },
       employee: {
         select: { name: true, lastName: true },
-      },
-      customer: {
-        select: {
-          nitCi: true,
-        },
       },
     },
   });
