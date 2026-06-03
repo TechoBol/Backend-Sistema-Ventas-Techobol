@@ -213,6 +213,11 @@ export const createSale = async (req: Request, res: Response) => {
               exists = !!existingCode;
             }
 
+            console.log({
+              ci,
+              nitCiToSave: ci || "S/N",
+            });
+
             existingCustomer = await tx.customer.create({
               data: {
                 name,
