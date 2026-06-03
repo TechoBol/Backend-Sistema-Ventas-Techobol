@@ -7,6 +7,7 @@ import intentorySocketInstance from './sockets/inventory.sockets'
 import locationSocketInstance from './sockets/sucursal.sockets'
 import employeeSocketInstance from './sockets/trbajador.sockets'
 import rolSocketInstance from './sockets/roles.sockets'
+import { seedGenericCustomer } from './utils/genericCustomer'
 
 config()
 
@@ -29,6 +30,7 @@ io.on('connection', socket => {
 
 const host = '0.0.0.0'
 
-server.listen({ port, host }, () => {
+server.listen({ port, host }, async () => {
+  await seedGenericCustomer()              
   console.log(`Server running on port ${port}`)
 })

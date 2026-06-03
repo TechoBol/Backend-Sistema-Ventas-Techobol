@@ -411,6 +411,8 @@ model Customer {
   quotations Quotation[]
   activities Activity[]
   notes      Note[]
+
+  isGeneric Boolean @default(false)
 }
 
 model CustomerAddress {

@@ -171,7 +171,7 @@ export const createSale = async (req: Request, res: Response) => {
               customerAddressId = existingAddress.id;
             }
           }
-        } else if (ci || name) {
+        } else if (ci || (name && name.trim() !== "")) {
           ////////////////////////////////////////////////////
           // CASO 2: Sin customerId — buscar por CI o crear
           ////////////////////////////////////////////////////
@@ -301,6 +301,14 @@ export const createSale = async (req: Request, res: Response) => {
           }
 
           customerId = existingCustomer.id;
+        } else {
+          // CASO 3: Sin ningún dato — usar cliente genérico
+          const genericCustomer = await tx.customer.findFirst({
+            where: { isGeneric: true },
+          });
+
+          if (!genericCustomer) throw new Error("Cliente genérico no encontrado");
+          customerId = genericCustomer.id;
         }
 
         //////////////////////////////////////////////////////
