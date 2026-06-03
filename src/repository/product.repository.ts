@@ -121,6 +121,8 @@ export const updateProductRepo = async (id: number, data: any) => {
     stock = 0,
     averageCost = 0,
     locationId,
+    porcentajeGanancia,
+    salePrice,
     ...productData
   } = data;
 
@@ -192,15 +194,11 @@ export const updateProductRepo = async (id: number, data: any) => {
       //////////////////////////////////////////////////////
 
       const oldStock = Number(inventory.quantity || 0);
-
       const oldCost = Number(inventory.averageCost || 0);
-
       const newStock = Number(stock || 0);
-
       const newCost = Number(averageCost || 0);
 
       let finalStock = oldStock;
-
       let finalAverageCost = oldCost;
 
       //////////////////////////////////////////////////////
@@ -214,12 +212,7 @@ export const updateProductRepo = async (id: number, data: any) => {
 
         finalAverageCost =
           totalStock > 0
-            ? Number(
-                (
-                  (oldStock * oldCost + newStock * newCost) /
-                  totalStock
-                ).toFixed(2),
-              )
+            ? (oldStock * oldCost + newStock * newCost) / totalStock
             : 0;
       }
 
@@ -234,10 +227,8 @@ export const updateProductRepo = async (id: number, data: any) => {
             locationId: locId,
           },
         },
-
         data: {
           quantity: finalStock,
-
           averageCost: finalAverageCost,
         },
       });
@@ -276,31 +267,13 @@ export const updateProductRepo = async (id: number, data: any) => {
       //////////////////////////////////////////////////////
 
       const globalAverageCost =
-        globalStock > 0
-          ? Number((globalCostTotal / globalStock).toFixed(2))
-          : 0;
+        globalStock > 0 ? globalCostTotal / globalStock : 0;
 
       //////////////////////////////////////////////////////
-      // PORCENTAJE GANANCIA
+      // PRECIO VENTA BASE (del front, igual que en create)
       //////////////////////////////////////////////////////
 
-      const porcentajeGanancia = Number(
-        currentProduct.porcentajeGanancia || 50,
-      );
-
-      //////////////////////////////////////////////////////
-      // COSTO + IVA
-      //////////////////////////////////////////////////////
-
-      const costWithIVA = globalAverageCost * 1.1494;
-
-      //////////////////////////////////////////////////////
-      // PRECIO BASE
-      //////////////////////////////////////////////////////
-
-      const calculatedSalePrice = costWithIVA * (1 + porcentajeGanancia / 100);
-
-      const roundedSalePrice = Math.round(calculatedSalePrice);
+      const baseSalePrice = Number(salePrice || 0);
 
       //////////////////////////////////////////////////////
       // UNIDADES
@@ -332,31 +305,26 @@ export const updateProductRepo = async (id: number, data: any) => {
         where: {
           id,
         },
-
         data: {
           name: productData.name?.trim()?.toUpperCase(),
-
           description: productData.description,
-
           code: productData.code?.trim(),
-
           lineId: Number(productData.lineId),
-
           brandName: productData.brandName,
-
           baseUnitId: baseUnit.id,
+          porcentajeGanancia: Number(porcentajeGanancia || 0),
 
-          //////////////////////////////////////////////////
+          ////////////////////////////////////////////////////
           // COSTO GLOBAL
-          //////////////////////////////////////////////////
+          ////////////////////////////////////////////////////
 
           purchasePrice: globalAverageCost,
 
-          //////////////////////////////////////////////////
-          // PRECIO GLOBAL
-          //////////////////////////////////////////////////
+          ////////////////////////////////////////////////////
+          // PRECIO VENTA (del front, igual que en create)
+          ////////////////////////////////////////////////////
 
-          salePrice: roundedSalePrice,
+          salePrice: baseSalePrice,
         },
       });
 
@@ -382,12 +350,16 @@ export const updateProductRepo = async (id: number, data: any) => {
         const equivalence = Number(item.equivalence || 1);
 
         ////////////////////////////////////////////////////
-        // PRECIO PRESENTACIÓN
+        // COSTO PROPORCIONAL (igual que en create)
         ////////////////////////////////////////////////////
 
-        const unitSalePrice = calculatedSalePrice * equivalence;
+        const unitPurchasePrice = globalAverageCost * equivalence;
 
-        const roundedUnitPrice = Math.round(unitSalePrice);
+        ////////////////////////////////////////////////////
+        // PRECIO PRESENTACIÓN (del front, igual que en create)
+        ////////////////////////////////////////////////////
+
+        const unitSalePrice = Number(item.salePrice || 0);
 
         ////////////////////////////////////////////////////
         // EXISTENTE
@@ -400,22 +372,10 @@ export const updateProductRepo = async (id: number, data: any) => {
             where: {
               id: existing.id,
             },
-
             data: {
               equivalence,
-
-              //////////////////////////////////////////////////
-              // COSTO GLOBAL
-              //////////////////////////////////////////////////
-
-              purchasePrice: globalAverageCost,
-
-              //////////////////////////////////////////////////
-              // PRECIO GLOBAL
-              //////////////////////////////////////////////////
-
-              salePrice: roundedUnitPrice,
-
+              purchasePrice: unitPurchasePrice,
+              salePrice: unitSalePrice,
               isDefault: item.isDefault || false,
             },
           });
@@ -423,23 +383,10 @@ export const updateProductRepo = async (id: number, data: any) => {
           await tx.productUnit.create({
             data: {
               productId: id,
-
               unitId: unit.id,
-
               equivalence,
-
-              //////////////////////////////////////////////////
-              // COSTO GLOBAL
-              //////////////////////////////////////////////////
-
-              purchasePrice: globalAverageCost,
-
-              //////////////////////////////////////////////////
-              // PRECIO GLOBAL
-              //////////////////////////////////////////////////
-
-              salePrice: roundedUnitPrice,
-
+              purchasePrice: unitPurchasePrice,
+              salePrice: unitSalePrice,
               isDefault: item.isDefault || false,
             },
           });
@@ -453,7 +400,6 @@ export const updateProductRepo = async (id: number, data: any) => {
       const defaultUnit = await tx.productUnit.findFirst({
         where: {
           productId: id,
-
           isDefault: true,
         },
       });
@@ -462,19 +408,12 @@ export const updateProductRepo = async (id: number, data: any) => {
         await tx.stockMovement.create({
           data: {
             productId: id,
-
             productUnitId: defaultUnit.id,
-
             toLocationId: locId,
-
             quantity: newStock,
-
             presentationQuantity: newStock,
-
             type: "IN",
-
             unitCost: newCost,
-
             reference: "IMPORTACIÓN",
           },
         });
@@ -488,18 +427,14 @@ export const updateProductRepo = async (id: number, data: any) => {
         where: {
           id,
         },
-
         include: {
           line: true,
-
           baseUnit: true,
-
           productUnits: {
             include: {
               unit: true,
             },
           },
-
           inventories: {
             include: {
               location: true,
