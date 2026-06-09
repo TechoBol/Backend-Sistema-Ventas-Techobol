@@ -60,7 +60,7 @@ export const notificationRepository = {
             sale: { select: { id: true, code: true, total: true } },
             transfer: { select: { id: true, transferCode: true } },
             quotation: { select: { id: true, code: true } },
-            importacion: { select: { id: true, code: true } },
+            importacion: { select: { id: true, referenceNumber: true } },
           },
         },
       },
