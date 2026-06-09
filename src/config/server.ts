@@ -13,6 +13,7 @@ import roleRoute from '../routes/role.routes'
 import transferRoute from '../routes/transferencias.routes'
 import dashboardRoutes from "../routes/dashboard.routes";
 import quotationRoutes from "../routes/quotation.routes";
+import notificationRoutes from "../routes/notification.routes";
 
 import { verifyToken } from '../middleware/auth.middleware'
 
@@ -36,5 +37,6 @@ app.use('/api/role',verifyToken, roleRoute)
 app.use('/api/transfer',verifyToken, transferRoute)
 app.use('/api/dashboard', verifyToken, dashboardRoutes)
 app.use("/api/quotations", quotationRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 export default app

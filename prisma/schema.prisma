@@ -55,6 +55,8 @@ model Employee {
 
   requestedTransfers Transfer[] @relation("RequestedBy")
   approvedTransfers  Transfer[] @relation("ApprovedBy")
+
+  notificationReads NotificationRead[]
 }
 
 model Role {
@@ -223,6 +225,8 @@ model Transfer {
   movements StockMovement[]
 
   createdAt DateTime @default(now())
+
+  notifications Notification[]
 }
 
 model TransferItem {
@@ -298,6 +302,8 @@ model Sale {
 
   customerNitSnapshot        String?
   customerNitCompanySnapshot String?
+
+  notifications Notification[]
 }
 
 enum SaleStatus {
@@ -359,6 +365,8 @@ model Quotation {
   customerAddressSnapshot   String?
   customerLatitudeSnapshot  Float?
   customerLongitudeSnapshot Float?
+
+  notifications Notification[]
 }
 
 enum QuotationStatus {
@@ -460,6 +468,8 @@ model Importacion {
   createdAt DateTime @default(now())
 
   details ImportacionDetail[]
+
+  notifications Notification[]
 }
 
 model ImportacionDetail {
@@ -492,4 +502,43 @@ model CustomerNit {
   sales Sale[]
 
   @@unique([customerId, number])
+}
+
+model Notification {
+  id        Int              @id @default(autoincrement())
+  type      NotificationType
+  title     String
+  body      String
+  createdAt DateTime         @default(now())
+
+  saleId        Int?
+  transferId    Int?
+  quotationId   Int?
+  importacionId Int?
+
+  sale        Sale?        @relation(fields: [saleId], references: [id])
+  transfer    Transfer?    @relation(fields: [transferId], references: [id])
+  quotation   Quotation?   @relation(fields: [quotationId], references: [id])
+  importacion Importacion? @relation(fields: [importacionId], references: [id])
+
+  reads NotificationRead[]
+}
+
+model NotificationRead {
+  id             Int          @id @default(autoincrement())
+  notification   Notification @relation(fields: [notificationId], references: [id])
+  notificationId Int
+  employee       Employee     @relation(fields: [employeeId], references: [id])
+  employeeId     Int
+  isRead         Boolean      @default(false)
+  readAt         DateTime?
+
+  @@unique([notificationId, employeeId])
+}
+
+enum NotificationType {
+  SALE
+  TRANSFER
+  QUOTATION
+  IMPORTACION
 }

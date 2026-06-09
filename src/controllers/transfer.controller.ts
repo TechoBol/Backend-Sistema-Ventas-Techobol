@@ -6,13 +6,14 @@ import {
   getTransfersByLocationRepo,
   rejectTransferRepo,
 } from "../repository/transfer.repository";
+import { notificationRepository } from "../repository/notification.repository";
 
 export const createTransfer = async (req: Request, res: Response) => {
   try {
     const token = req.headers["x-access-token"] as string;
     const user = jwt.verify(token, process.env.JWTSECRET!) as any;
 
-    const { destinationId, items ,glosa } = req.body;
+    const { destinationId, items, glosa } = req.body;
 
     if (!items?.length) {
       return res.status(400).json({ message: "Items requeridos" });
@@ -25,10 +26,35 @@ export const createTransfer = async (req: Request, res: Response) => {
       items,
       glosa,
     });
-    let dataAprobado
+
+    let dataAprobado;
     if (destinationId) {
-      dataAprobado = await approveTransferRepo(data.id, user.id, 1)
+      dataAprobado = await approveTransferRepo(data.id, user.id, 1);
+
+      try {
+        await notificationRepository.createForAll({
+          type: "TRANSFER",
+          title: "Transferencia aprobada",
+          body: `Transferencia ${dataAprobado?.transferCode} aprobada automáticamente`,
+          transferId: data.id,
+        });
+      } catch (notifError) {
+        console.error("❌ Error al crear notificación de transferencia:", notifError);
+      }
+
+    } else {
+      try {
+        await notificationRepository.createForAll({
+          type: "TRANSFER",
+          title: "Nueva transferencia solicitada",
+          body: `Transferencia ${data?.transferCode} solicitada`,
+          transferId: data.id,
+        });
+      } catch (notifError) {
+        console.error("❌ Error al crear notificación de transferencia:", notifError);
+      }
     }
+
     return res.json(dataAprobado ? dataAprobado : data);
   } catch (error) {
     console.log(error);
@@ -37,11 +63,7 @@ export const createTransfer = async (req: Request, res: Response) => {
 };
 
 export const getMyTransfers = async (_req: Request, res: Response) => {
-  //const token = req.headers["x-access-token"] as string;
-  //const user = jwt.verify(token, process.env.JWTSECRET!) as any;
-
   const data = await getTransfersByLocationRepo();
-
   res.json(data);
 };
 
@@ -59,6 +81,17 @@ export const approveTransfer = async (req: Request, res: Response) => {
 
     const data = await approveTransferRepo(Number(id), user.id, fromLocationId);
 
+    try {
+      await notificationRepository.createForAll({
+        type: "TRANSFER",
+        title: "Transferencia aprobada",
+        body: `Transferencia ${data?.transferCode} fue aprobada`,
+        transferId: Number(id),
+      });
+    } catch (notifError) {
+      console.error("❌ Error al crear notificación de transferencia:", notifError);
+    }
+
     return res.json(data);
   } catch (error: any) {
     return res.status(400).json({ message: error.message });
@@ -73,6 +106,17 @@ export const rejectTransfer = async (req: Request, res: Response) => {
     const { id } = req.params;
 
     const data = await rejectTransferRepo(Number(id), user.id);
+
+    try {
+      await notificationRepository.createForAll({
+        type: "TRANSFER",
+        title: "Transferencia rechazada",
+        body: `Transferencia ${data?.transferCode} fue rechazada`,
+        transferId: Number(id),
+      });
+    } catch (notifError) {
+      console.error("❌ Error al crear notificación de transferencia:", notifError);
+    }
 
     res.json(data);
   } catch (error: any) {

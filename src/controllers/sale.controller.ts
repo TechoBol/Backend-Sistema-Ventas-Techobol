@@ -15,6 +15,7 @@ import {
 } from "../repository/sale.repository";
 
 import jwt from "jsonwebtoken";
+import { notificationRepository } from "../repository/notification.repository";
 
 // =====================================================
 // 🔥 CREATE SALE
@@ -431,10 +432,18 @@ export const createSale = async (req: Request, res: Response) => {
       { timeout: 15000 },
     );
 
-    return res.json({
-      message: "Venta completada",
-      sale,
-    });
+    try {
+      await notificationRepository.createForAll({
+        type: "SALE",
+        title: "Nueva venta registrada",
+        body: `Venta ${sale?.code} registrada`,
+        saleId: sale?.id,
+      });
+    } catch (notifError) {
+      console.error("❌ Error al crear notificación de venta:", notifError);
+    }
+
+    return res.json({ message: "Venta completada", sale });
   } catch (err: any) {
     console.error("❌ ERROR CREATE SALE:", err);
     return res.status(500).json({

@@ -7,6 +7,7 @@ import intentorySocketInstance from './sockets/inventory.sockets'
 import locationSocketInstance from './sockets/sucursal.sockets'
 import employeeSocketInstance from './sockets/trbajador.sockets'
 import rolSocketInstance from './sockets/roles.sockets'
+import { initNotificationSocket } from './sockets/notification.sockets'
 import { seedGenericCustomer } from './utils/genericCustomer'
 
 config()
@@ -23,6 +24,7 @@ intentorySocketInstance(io)
 locationSocketInstance(io)
 employeeSocketInstance(io)
 rolSocketInstance(io)
+initNotificationSocket(io)
 
 io.on('connection', socket => {
   console.log('a user connected ' + socket.id)
