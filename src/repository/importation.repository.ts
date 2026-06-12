@@ -11,6 +11,7 @@ type ImportationPayload = {
   productCount?: number | null;
   status?: ImportacionStatus;
   snapshot?: Prisma.InputJsonValue | null;
+  locationId?: number | null;
 };
 
 export const getImportationsRepo = async () => {
@@ -44,6 +45,8 @@ export const createImportationRepo = async (data: ImportationPayload) => {
       status: data.status ?? ImportacionStatus.DRAFT,
 
       snapshot: data.snapshot ?? Prisma.JsonNull,
+
+      locationId: data.locationId ?? null,
     },
   });
 };
@@ -81,6 +84,8 @@ export const updateImportationRepo = async (
       status: data.status ?? ImportacionStatus.DRAFT,
 
       snapshot: data.snapshot ?? Prisma.JsonNull,
+
+      locationId: data.locationId ?? current.locationId,
     },
   });
 };

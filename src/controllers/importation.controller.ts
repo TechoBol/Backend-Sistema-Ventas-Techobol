@@ -7,6 +7,7 @@ import {
   updateImportationRepo,
   verifyImportationRepo,
 } from "../repository/importation.repository";
+import { notificationRepository } from "../repository/notification.repository";
 
 const normalizeStatus = (status?: string): ImportacionStatus => {
   if (!status) return ImportacionStatus.DRAFT;
@@ -79,6 +80,7 @@ export const createImportation = async (req: Request, res: Response) => {
       productCount,
       status,
       snapshot,
+      locationId,
     } = req.body;
 
     const data = await createImportationRepo({
@@ -91,7 +93,20 @@ export const createImportation = async (req: Request, res: Response) => {
       productCount: productCount ?? getProductCountFromSnapshot(snapshot),
       status: normalizeStatus(status),
       snapshot,
+      locationId: locationId ? Number(locationId) : null,
     });
+
+    try {
+      await notificationRepository.createForAll({
+        type: "IMPORTACION",
+        title: "Nueva importación registrada",
+        body: `Importación ${data.referenceNumber ?? data.id} registrada`,
+        importacionId: data.id,
+        locationId: data.locationId ?? undefined,
+      });
+    } catch (notifError) {
+      console.error("❌ Error al crear notificación de importación:", notifError);
+    }
 
     return res.json(data);
   } catch (error) {
@@ -122,6 +137,7 @@ export const updateImportation = async (req: Request, res: Response) => {
       productCount,
       status,
       snapshot,
+      locationId,
     } = req.body;
 
     const data = await updateImportationRepo(id, {
@@ -134,6 +150,7 @@ export const updateImportation = async (req: Request, res: Response) => {
       productCount: productCount ?? getProductCountFromSnapshot(snapshot),
       status: normalizeStatus(status),
       snapshot,
+      locationId: locationId ? Number(locationId) : undefined,
     });
 
     return res.json(data);
@@ -169,6 +186,18 @@ export const verifyImportation = async (req: Request, res: Response) => {
     }
 
     const data = await verifyImportationRepo(id);
+
+    try {
+      await notificationRepository.createForAll({
+        type: "IMPORTACION",
+        title: "Importación verificada",
+        body: `Importación ${data?.referenceNumber ?? data?.id} fue verificada`,
+        importacionId: data?.id,
+        locationId: data?.locationId ?? undefined,
+      });
+    } catch (notifError) {
+      console.error("❌ Error al crear notificación de importación:", notifError);
+    }
 
     return res.json({
       message: "Importación verificada correctamente.",

@@ -438,6 +438,7 @@ export const createSale = async (req: Request, res: Response) => {
         title: "Nueva venta registrada",
         body: `Venta ${sale?.code} registrada`,
         saleId: sale?.id,
+        locationId,
       });
     } catch (notifError) {
       console.error("❌ Error al crear notificación de venta:", notifError);

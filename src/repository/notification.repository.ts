@@ -10,15 +10,80 @@ interface CreateNotificationParams {
   transferId?: number;
   quotationId?: number;
   importacionId?: number;
+  locationId?: number;      // para SALE, QUOTATION, IMPORTACION
+  fromLocationId?: number;  // para TRANSFER
+  toLocationId?: number;    // para TRANSFER
 }
+
+const GLOBAL_LEVELS = [1, 2, 5];
+const NO_TRANSFER_IMPORT_LEVEL = 4;
 
 export const notificationRepository = {
 
   async createForAll(data: CreateNotificationParams) {
-    const employees = await prisma.employee.findMany({
-      where: { isVisible: true },
-      select: { id: true },
-    });
+    const { type, locationId, fromLocationId, toLocationId } = data;
+
+    let employees: { id: number }[] = [];
+
+    if (type === 'SALE' || type === 'QUOTATION') {
+      employees = await prisma.employee.findMany({
+        where: {
+          isVisible: true,
+          locationId: locationId ?? undefined,
+        },
+        select: { id: true },
+      });
+
+    } else if (type === 'IMPORTACION') {
+      const globalEmployees = await prisma.employee.findMany({
+        where: {
+          isVisible: true,
+          role: { level: { in: GLOBAL_LEVELS } },
+        },
+        select: { id: true },
+      });
+
+      const branchEmployees = await prisma.employee.findMany({
+        where: {
+          isVisible: true,
+          locationId: locationId ?? undefined,
+          role: { level: { notIn: [...GLOBAL_LEVELS, NO_TRANSFER_IMPORT_LEVEL] } },
+        },
+        select: { id: true },
+      });
+
+      employees = dedupe([...globalEmployees, ...branchEmployees]);
+
+    } else if (type === 'TRANSFER') {
+      // Niveles 1, 2, 5 — ven todas las transferencias
+      const globalEmployees = await prisma.employee.findMany({
+        where: {
+          isVisible: true,
+          role: { level: { in: GLOBAL_LEVELS } },
+        },
+        select: { id: true },
+      });
+
+      // Nivel 3 — solo si su sucursal es origen o destino
+      const involvedLocationIds = [fromLocationId, toLocationId].filter(
+        (id): id is number => !!id
+      );
+
+      const branchEmployees = involvedLocationIds.length
+        ? await prisma.employee.findMany({
+            where: {
+              isVisible: true,
+              locationId: { in: involvedLocationIds },
+              role: { level: { notIn: [...GLOBAL_LEVELS, NO_TRANSFER_IMPORT_LEVEL] } },
+            },
+            select: { id: true },
+          })
+        : [];
+
+      employees = dedupe([...globalEmployees, ...branchEmployees]);
+    }
+
+    if (employees.length === 0) return null;
 
     const notification = await prisma.notification.create({
       data: {
@@ -102,3 +167,9 @@ export const notificationRepository = {
     });
   },
 };
+
+function dedupe(list: { id: number }[]): { id: number }[] {
+  const map = new Map<number, { id: number }>();
+  list.forEach((e) => map.set(e.id, e));
+  return Array.from(map.values());
+}
