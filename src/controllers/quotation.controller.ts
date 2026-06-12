@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import prisma from "../config/db";
 import jwt from "jsonwebtoken";
+import { notificationRepository } from "../repository/notification.repository";
 
 import {
   createQuotationRepo,
@@ -319,10 +320,19 @@ export const createQuotation = async (req: Request, res: Response) => {
       { timeout: 15000 },
     );
 
-    return res.json({
-      message: "Cotización creada exitosamente",
-      quotation,
-    });
+    try {
+      await notificationRepository.createForAll({
+        type: "QUOTATION",
+        title: "Nueva cotización registrada",
+        body: `Código ${quotation?.code}`,
+        quotationId: quotation?.id,
+        locationId: quotation?.locationId,
+      });
+    } catch (notifError) {
+      console.error("❌ Error al crear notificación de cotización:", notifError);
+    }
+
+    return res.json({ message: "Cotización creada exitosamente", quotation });
   } catch (err: any) {
     console.error("❌ ERROR CREATE QUOTATION:", err);
     return res.status(500).json({
@@ -393,6 +403,20 @@ export const updateQuotationStatus = async (req: Request, res: Response) => {
         },
       },
     });
+
+    const statusLabel = status === "APPROVED" ? "aprobada" : "rechazada";
+
+    try {
+      await notificationRepository.createForAll({
+        type: "QUOTATION",
+        title: `Cotización ${statusLabel}`,
+        body: `Cotización ${updated.code} fue ${statusLabel}`,
+        quotationId: updated.id,
+        locationId: updated.locationId,
+      });
+    } catch (notifError) {
+      console.error("❌ Error al crear notificación de estado:", notifError);
+    }
 
     return res.json(updated);
   } catch (error) {
@@ -591,10 +615,19 @@ export const convertQuotationToSale = async (req: Request, res: Response) => {
       { timeout: 15000 },
     );
 
-    return res.json({
-      message: "Cotización convertida a venta exitosamente",
-      sale,
-    });
+    try {
+      await notificationRepository.createForAll({
+        type: "SALE",
+        title: "Nueva venta registrada",
+        body: `Venta ${sale?.code} registrada`,
+        saleId: sale?.id,
+        locationId: sale?.locationId,
+      });
+    } catch (notifError) {
+      console.error("❌ Error al crear notificación de venta:", notifError);
+    }
+
+    return res.json({ message: "Cotización convertida a venta exitosamente", sale });
   } catch (err: any) {
     console.error("❌ ERROR CONVERT QUOTATION:", err);
     return res.status(500).json({

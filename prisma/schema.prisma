@@ -27,6 +27,8 @@ model Location {
 
   fromTransfers Transfer[] @relation("FromTransfer")
   toTransfers   Transfer[] @relation("ToTransfer")
+
+  importaciones Importacion[]
 }
 
 enum LocationType {
@@ -55,6 +57,8 @@ model Employee {
 
   requestedTransfers Transfer[] @relation("RequestedBy")
   approvedTransfers  Transfer[] @relation("ApprovedBy")
+
+  notificationReads NotificationRead[]
 }
 
 model Role {
@@ -108,13 +112,12 @@ model Product {
   quantityDiscount Float   @default(0)
   bossDiscount     Float   @default(0)
 
-  productUnits      ProductUnit[]
-  inventories       Inventory[]
-  movements         StockMovement[]
-  saleDetails       SaleDetail[]
-  quotationDetails  QuotationDetail[]
-  transferItems     TransferItem[]
-  ImportacionDetail ImportacionDetail[]
+  productUnits     ProductUnit[]
+  inventories      Inventory[]
+  movements        StockMovement[]
+  saleDetails      SaleDetail[]
+  quotationDetails QuotationDetail[]
+  transferItems    TransferItem[]
 }
 
 model ProductUnit {
@@ -133,11 +136,10 @@ model ProductUnit {
 
   isDefault Boolean @default(false)
 
-  saleDetails       SaleDetail[]
-  quotationDetails  QuotationDetail[]
-  stockMovements    StockMovement[]
-  transferItems     TransferItem[]
-  ImportacionDetail ImportacionDetail[]
+  saleDetails      SaleDetail[]
+  quotationDetails QuotationDetail[]
+  stockMovements   StockMovement[]
+  transferItems    TransferItem[]
 
   @@unique([productId, unitId])
 }
@@ -223,6 +225,8 @@ model Transfer {
   movements StockMovement[]
 
   createdAt DateTime @default(now())
+
+  notifications Notification[]
 }
 
 model TransferItem {
@@ -298,6 +302,8 @@ model Sale {
 
   customerNitSnapshot        String?
   customerNitCompanySnapshot String?
+
+  notifications Notification[]
 }
 
 enum SaleStatus {
@@ -359,6 +365,8 @@ model Quotation {
   customerAddressSnapshot   String?
   customerLatitudeSnapshot  Float?
   customerLongitudeSnapshot Float?
+
+  notifications Notification[]
 }
 
 enum QuotationStatus {
@@ -411,6 +419,8 @@ model Customer {
   quotations Quotation[]
   activities Activity[]
   notes      Note[]
+
+  isGeneric Boolean @default(false)
 }
 
 model CustomerAddress {
@@ -449,32 +459,26 @@ model Note {
 }
 
 model Importacion {
-  id        Int      @id @default(autoincrement())
-  code      String   @unique
-  supplier  String
-  date      DateTime
-  total     Float    @default(0)
-  notes     String?
-  createdAt DateTime @default(now())
-
-  details ImportacionDetail[]
+  id                   Int               @id @default(autoincrement())
+  supplierName         String?
+  referenceNumber      String?
+  importationDate      DateTime?
+  officialExchangeRate Decimal           @default(6.960000) @db.Decimal(12, 6)
+  bankExchangeRate     Decimal?          @db.Decimal(12, 6)
+  ivaPercent           Decimal           @default(14.9400) @db.Decimal(8, 4)
+  productCount         Int               @default(0)
+  status               ImportacionStatus @default(DRAFT)
+  snapshot             Json?
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+  notifications        Notification[]
+  Location             Location?         @relation(fields: [locationId], references: [id])
+  locationId           Int?
 }
 
-model ImportacionDetail {
-  id Int @id @default(autoincrement())
-
-  importacion   Importacion @relation(fields: [importacionId], references: [id])
-  importacionId Int
-
-  product   Product @relation(fields: [productId], references: [id])
-  productId Int
-
-  productUnit   ProductUnit? @relation(fields: [productUnitId], references: [id])
-  productUnitId Int?
-
-  quantity Float
-  unitCost Float
-  subtotal Float
+enum ImportacionStatus {
+  DRAFT
+  VERIFIED
 }
 
 model CustomerNit {
@@ -490,4 +494,43 @@ model CustomerNit {
   sales Sale[]
 
   @@unique([customerId, number])
+}
+
+model Notification {
+  id        Int              @id @default(autoincrement())
+  type      NotificationType
+  title     String
+  body      String
+  createdAt DateTime         @default(now())
+
+  saleId        Int?
+  transferId    Int?
+  quotationId   Int?
+  importacionId Int?
+
+  sale        Sale?        @relation(fields: [saleId], references: [id])
+  transfer    Transfer?    @relation(fields: [transferId], references: [id])
+  quotation   Quotation?   @relation(fields: [quotationId], references: [id])
+  importacion Importacion? @relation(fields: [importacionId], references: [id])
+
+  reads NotificationRead[]
+}
+
+model NotificationRead {
+  id             Int          @id @default(autoincrement())
+  notification   Notification @relation(fields: [notificationId], references: [id])
+  notificationId Int
+  employee       Employee     @relation(fields: [employeeId], references: [id])
+  employeeId     Int
+  isRead         Boolean      @default(false)
+  readAt         DateTime?
+
+  @@unique([notificationId, employeeId])
+}
+
+enum NotificationType {
+  SALE
+  TRANSFER
+  QUOTATION
+  IMPORTACION
 }
