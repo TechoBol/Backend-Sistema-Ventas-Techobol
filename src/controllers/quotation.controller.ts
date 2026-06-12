@@ -326,6 +326,7 @@ export const createQuotation = async (req: Request, res: Response) => {
         title: "Nueva cotización registrada",
         body: `Código ${quotation?.code}`,
         quotationId: quotation?.id,
+        locationId: quotation?.locationId,
       });
     } catch (notifError) {
       console.error("❌ Error al crear notificación de cotización:", notifError);
@@ -411,6 +412,7 @@ export const updateQuotationStatus = async (req: Request, res: Response) => {
         title: `Cotización ${statusLabel}`,
         body: `Cotización ${updated.code} fue ${statusLabel}`,
         quotationId: updated.id,
+        locationId: updated.locationId,
       });
     } catch (notifError) {
       console.error("❌ Error al crear notificación de estado:", notifError);
@@ -619,6 +621,7 @@ export const convertQuotationToSale = async (req: Request, res: Response) => {
         title: "Nueva venta registrada",
         body: `Venta ${sale?.code} registrada`,
         saleId: sale?.id,
+        locationId: sale?.locationId,
       });
     } catch (notifError) {
       console.error("❌ Error al crear notificación de venta:", notifError);

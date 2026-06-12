@@ -18,11 +18,6 @@ export const createTransfer = async (req: Request, res: Response) => {
     if (!items?.length) {
       return res.status(400).json({ message: "Items requeridos" });
     }
-    console.log("createTransferRepo", {
-      requestedById: user.id,
-      toLocationId: destinationId ? destinationId : user.locationId,
-      fromLocationId: origenId ? origenId : 1,
-    });
     const data = await createTransferRepo({
       requestedById: user.id,
       toLocationId: destinationId ? destinationId : user.locationId,
@@ -41,6 +36,8 @@ export const createTransfer = async (req: Request, res: Response) => {
           title: "Transferencia aprobada",
           body: `Transferencia ${dataAprobado?.transferCode} aprobada automáticamente`,
           transferId: data.id,
+          fromLocationId: 1,
+          toLocationId,
         });
       } catch (notifError) {
         console.error(
@@ -55,6 +52,8 @@ export const createTransfer = async (req: Request, res: Response) => {
           title: "Nueva transferencia solicitada",
           body: `Transferencia ${data?.transferCode} solicitada`,
           transferId: data.id,
+          fromLocationId: data.fromLocationId ?? undefined,
+          toLocationId: data.toLocationId ?? undefined,
         });
       } catch (notifError) {
         console.error(
@@ -96,6 +95,8 @@ export const approveTransfer = async (req: Request, res: Response) => {
         title: "Transferencia aprobada",
         body: `Transferencia ${data?.transferCode} fue aprobada`,
         transferId: Number(id),
+        fromLocationId,
+        toLocationId: data?.toLocationId ?? undefined,
       });
     } catch (notifError) {
       console.error(
@@ -125,6 +126,8 @@ export const rejectTransfer = async (req: Request, res: Response) => {
         title: "Transferencia rechazada",
         body: `Transferencia ${data?.transferCode} fue rechazada`,
         transferId: Number(id),
+        fromLocationId: data?.fromLocationId ?? undefined,
+        toLocationId: data?.toLocationId ?? undefined,
       });
     } catch (notifError) {
       console.error(
