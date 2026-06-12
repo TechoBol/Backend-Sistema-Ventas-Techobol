@@ -195,6 +195,8 @@ export const approveTransferRepo = async (
         throw new Error("Transfer ya procesada");
       }
 
+      const realFromLocationId = transfer.fromLocationId ?? fromLocationId;
+
       const toLocationId = transfer.toLocationId;
 
       if (!toLocationId) {
@@ -205,7 +207,7 @@ export const approveTransferRepo = async (
 
       const sourceInventories = await tx.inventory.findMany({
         where: {
-          locationId: fromLocationId,
+          locationId: realFromLocationId,
           productId: {
             in: productIds,
           },
@@ -258,7 +260,7 @@ export const approveTransferRepo = async (
           where: {
             productId_locationId: {
               productId: item.productId,
-              locationId: fromLocationId,
+              locationId: realFromLocationId,
             },
           },
           data: {
@@ -320,7 +322,7 @@ export const approveTransferRepo = async (
         await tx.stockMovement.create({
           data: {
             productId: item.productId,
-            fromLocationId,
+            fromLocationId: realFromLocationId,
             toLocationId,
             quantity: item.quantity,
             type: "TRANSFER",
@@ -335,17 +337,23 @@ export const approveTransferRepo = async (
       // APROBAR TRANSFERENCIA
       //////////////////////////////////////
 
+      const updateData: any = {
+        status: "APPROVED",
+        approvedById,
+        approvedAt: new Date(),
+        executedAt: new Date(),
+      };
+
+      // Solo asignar origen si la transferencia no tenía uno
+      if (!transfer.fromLocationId) {
+        updateData.fromLocationId = realFromLocationId;
+      }
+
       await tx.transfer.update({
         where: {
           id: transferId,
         },
-        data: {
-          status: "APPROVED",
-          approvedById,
-          approvedAt: new Date(),
-          executedAt: new Date(),
-          fromLocationId,
-        },
+        data: updateData,
       });
 
       return tx.transfer.findUnique({

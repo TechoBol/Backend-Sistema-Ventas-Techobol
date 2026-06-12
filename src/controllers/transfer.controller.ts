@@ -13,22 +13,26 @@ export const createTransfer = async (req: Request, res: Response) => {
     const token = req.headers["x-access-token"] as string;
     const user = jwt.verify(token, process.env.JWTSECRET!) as any;
 
-    const { destinationId, items, glosa } = req.body;
+    const { origenId, destinationId, items, glosa } = req.body;
 
     if (!items?.length) {
       return res.status(400).json({ message: "Items requeridos" });
     }
-
+    console.log("createTransferRepo", {
+      requestedById: user.id,
+      toLocationId: destinationId ? destinationId : user.locationId,
+      fromLocationId: origenId ? origenId : 1,
+    });
     const data = await createTransferRepo({
       requestedById: user.id,
       toLocationId: destinationId ? destinationId : user.locationId,
-      fromLocationId: destinationId ? 1 : undefined,
+      fromLocationId: origenId ? origenId : 1,
       items,
       glosa,
     });
-
+    console.log(data)
     let dataAprobado;
-    if (destinationId) {
+    /*if (destinationId) {
       dataAprobado = await approveTransferRepo(data.id, user.id, 1);
 
       try {
@@ -39,10 +43,12 @@ export const createTransfer = async (req: Request, res: Response) => {
           transferId: data.id,
         });
       } catch (notifError) {
-        console.error("❌ Error al crear notificación de transferencia:", notifError);
+        console.error(
+          "❌ Error al crear notificación de transferencia:",
+          notifError,
+        );
       }
-
-    } else {
+    } else {*/
       try {
         await notificationRepository.createForAll({
           type: "TRANSFER",
@@ -51,9 +57,12 @@ export const createTransfer = async (req: Request, res: Response) => {
           transferId: data.id,
         });
       } catch (notifError) {
-        console.error("❌ Error al crear notificación de transferencia:", notifError);
+        console.error(
+          "❌ Error al crear notificación de transferencia:",
+          notifError,
+        );
       }
-    }
+    //}
 
     return res.json(dataAprobado ? dataAprobado : data);
   } catch (error) {
@@ -89,7 +98,10 @@ export const approveTransfer = async (req: Request, res: Response) => {
         transferId: Number(id),
       });
     } catch (notifError) {
-      console.error("❌ Error al crear notificación de transferencia:", notifError);
+      console.error(
+        "❌ Error al crear notificación de transferencia:",
+        notifError,
+      );
     }
 
     return res.json(data);
@@ -115,7 +127,10 @@ export const rejectTransfer = async (req: Request, res: Response) => {
         transferId: Number(id),
       });
     } catch (notifError) {
-      console.error("❌ Error al crear notificación de transferencia:", notifError);
+      console.error(
+        "❌ Error al crear notificación de transferencia:",
+        notifError,
+      );
     }
 
     res.json(data);
