@@ -52,21 +52,28 @@ export const createSale = async (req: Request, res: Response) => {
 
     const sale = await prisma.$transaction(
       async (tx) => {
+        
         //////////////////////////////////////////////////////
-        // 🔥 VALIDAR STOCK
+        // 🔥 VALIDAR STOCK (agrupado por producto)
         //////////////////////////////////////////////////////
+
+        const requiredByProduct = new Map<number, number>();
 
         for (const item of products) {
-          const inventory = await getInventoryRepo(
-            tx,
-            item.productId,
-            locationId,
-          );
           const realQuantity = Number(item.quantity) * Number(item.equivalence);
+          requiredByProduct.set(
+            item.productId,
+            (requiredByProduct.get(item.productId) || 0) + realQuantity,
+          );
+        }
 
-          if (!inventory || inventory.quantity < realQuantity) {
+        for (const [productId, requiredQuantity] of requiredByProduct.entries()) {
+          const inventory = await getInventoryRepo(tx, productId, locationId);
+          const product = await getProductRepo(tx, productId);
+
+          if (!inventory || inventory.quantity < requiredQuantity) {
             throw new Error(
-              `Stock insuficiente para producto ID ${item.productId}. Disponible: ${inventory?.quantity || 0}`,
+              `Stock insuficiente para "${product?.name || `producto ID ${productId}`}". Disponible: ${inventory?.quantity || 0}, requerido: ${requiredQuantity}`,
             );
           }
         }
