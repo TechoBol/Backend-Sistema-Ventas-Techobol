@@ -45,6 +45,7 @@ export const createSale = async (req: Request, res: Response) => {
       businessName,
       occupation,
       nitId,
+      glosa
     } = req.body;
 
     const token = req.headers["x-access-token"] as string;
@@ -363,7 +364,7 @@ export const createSale = async (req: Request, res: Response) => {
           generateInvoice: generateInvoice || false,
           customerNitSnapshot,
           customerNitCompanySnapshot,
-
+          glosa,
           customerNitId: nitId ? Number(nitId) : null,
         });
 
