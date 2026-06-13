@@ -302,8 +302,8 @@ model Sale {
 
   customerNitSnapshot        String?
   customerNitCompanySnapshot String?
-
-  notifications Notification[]
+  glosa                      String?
+  notifications              Notification[]
 }
 
 enum SaleStatus {
