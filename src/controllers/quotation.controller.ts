@@ -454,24 +454,34 @@ export const convertQuotationToSale = async (req: Request, res: Response) => {
         if (quotation.status === "REJECTED") throw new Error("No se puede convertir una cotización rechazada");
 
         //////////////////////////////////////////////////////
-        // 🔥 VALIDAR STOCK
+        // 🔥 VALIDAR STOCK (agrupado por producto)
         //////////////////////////////////////////////////////
 
+        const requiredByProduct = new Map<number, number>();
+
         for (const item of quotation.details) {
+          const realQuantity = Number(item.quantity) * Number(item.equivalence);
+          requiredByProduct.set(
+            item.productId,
+            (requiredByProduct.get(item.productId) || 0) + realQuantity,
+          );
+        }
+
+        for (const [productId, requiredQuantity] of requiredByProduct.entries()) {
           const inventory = await tx.inventory.findUnique({
             where: {
               productId_locationId: {
-                productId: item.productId,
+                productId,
                 locationId: quotation.locationId,
               },
             },
           });
 
-          const realQuantity = Number(item.quantity) * Number(item.equivalence);
+          const product = await tx.product.findUnique({ where: { id: productId } });
 
-          if (!inventory || inventory.quantity < realQuantity) {
+          if (!inventory || inventory.quantity < requiredQuantity) {
             throw new Error(
-              `Stock insuficiente para producto ID ${item.productId}. Disponible: ${inventory?.quantity || 0}`,
+              `Stock insuficiente para "${product?.name || `producto ID ${productId}`}". Disponible: ${inventory?.quantity || 0}, requerido: ${requiredQuantity}`,
             );
           }
         }
