@@ -19,7 +19,7 @@ export const getEmployees = async (req: Request, res: Response) => {
     const token = req.headers["x-access-token"] as string;
     const user = jwt.verify(token, process.env.JWTSECRET!) as any;
 
-    const isManagement = user.level === 1 || user.level === 4;
+    const isManagement = user.level === 1 || user.level === 2 || user.level === 5;
 
     const data = await getEmployeesRepo(Number(user.locationId), isManagement);
 
@@ -70,7 +70,7 @@ export const createEmployee = async (req: Request, res: Response) => {
 
     // GENERAR PASSWORD
     const generatedPassword = generatePassword(name, lastName, numeral);
-    console.log(generatedPassword)
+    console.log(generatedPassword);
     // HASHEAR
     const saltRounds = 10;
 
@@ -123,7 +123,16 @@ export const updateEmployee = async (req: Request, res: Response) => {
       return res.status(400).json({ message: "id inválido" });
     }
 
-    const { name, lastName, email, roleId, locationId, password, numeral, celular } = req.body;
+    const {
+      name,
+      lastName,
+      email,
+      roleId,
+      locationId,
+      password,
+      numeral,
+      celular,
+    } = req.body;
 
     let hashedPassword;
     if (password) {
@@ -141,7 +150,7 @@ export const updateEmployee = async (req: Request, res: Response) => {
       celular,
       ...(hashedPassword && { password: hashedPassword }),
     });
-
+    req.app.get("io").to(`employee_${id}`).emit("forceLogout");
     return res.json(data);
   } catch (error: any) {
     console.error(error);
