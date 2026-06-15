@@ -469,7 +469,7 @@ export const getSales = async (req: Request, res: Response) => {
   try {
     const token = req.headers["x-access-token"] as string;
     const user = jwt.verify(token, process.env.JWTSECRET!) as any;
-    const isManagement = user.level === 1 || user.level === 4;
+    const isManagement = user.level === 1 || user.level === 5 || user.level === 2;
     const data = await getSalesRepo(Number(user.locationId), isManagement);
     return res.json(data);
   } catch (error) {

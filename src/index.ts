@@ -29,7 +29,7 @@ initNotificationSocket(io)
 io.on('connection', socket => {
   console.log('a user connected ' + socket.id)
 })
-
+app.set("io", io);
 const host = '0.0.0.0'
 
 server.listen({ port, host }, async () => {
