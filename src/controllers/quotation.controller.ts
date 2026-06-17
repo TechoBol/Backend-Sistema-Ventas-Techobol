@@ -241,6 +241,18 @@ export const createQuotation = async (req: Request, res: Response) => {
         );
 
         //////////////////////////////////////////////////////
+        // 🔥 FECHA DE VENCIMIENTO — default 15 días
+        //////////////////////////////////////////////////////
+
+        let resolvedExpiresAt: Date;
+        if (expiresAt) {
+          resolvedExpiresAt = new Date(expiresAt);
+        } else {
+          resolvedExpiresAt = new Date();
+          resolvedExpiresAt.setDate(resolvedExpiresAt.getDate() + 15);
+        }
+
+        //////////////////////////////////////////////////////
         // 🔥 CREAR COTIZACIÓN
         //////////////////////////////////////////////////////
 
@@ -253,7 +265,7 @@ export const createQuotation = async (req: Request, res: Response) => {
           discount: totalDiscount,
           total: Number(total),
           notes: notes || null,
-          expiresAt: expiresAt ? new Date(expiresAt) : null,
+          expiresAt: resolvedExpiresAt,
           status: "PENDING",
           pdfUrl: `MEGADIS/QUOTATIONS/${code}.pdf`,
           customerNitSnapshot,
@@ -304,7 +316,7 @@ export const createQuotation = async (req: Request, res: Response) => {
           where: { id: newQuotation.id },
           include: {
             customer: {
-              include: { nits: true }, // 🔄 incluir nits
+              include: { nits: true },
             },
             location: true,
             employee: true,
@@ -386,12 +398,17 @@ export const updateQuotationStatus = async (req: Request, res: Response) => {
       return res.status(400).json({ error: "La cotización ya fue rechazada" });
     }
 
+    // 🔥 NUEVO: bloquear si ya venció
+    if (quotation.status === "EXPIRED") {
+      return res.status(400).json({ error: "La cotización ya venció y no puede modificarse" });
+    }
+
     const updated = await prisma.quotation.update({
       where: { id: Number(id) },
       data: { status },
       include: {
         customer: {
-          include: { nits: true }, // 🔄 incluir nits
+          include: { nits: true },
         },
         location: { select: { name: true } },
         employee: { select: { name: true, lastName: true } },
@@ -453,6 +470,9 @@ export const convertQuotationToSale = async (req: Request, res: Response) => {
         if (quotation.status === "APPROVED") throw new Error("La cotización ya fue convertida a venta");
         if (quotation.status === "REJECTED") throw new Error("No se puede convertir una cotización rechazada");
 
+        // 🔥 NUEVO: bloquear si ya venció
+        if (quotation.status === "EXPIRED") throw new Error("No se puede convertir una cotización vencida");
+
         //////////////////////////////////////////////////////
         // 🔥 VALIDAR STOCK (agrupado por producto)
         //////////////////////////////////////////////////////
@@ -490,11 +510,8 @@ export const convertQuotationToSale = async (req: Request, res: Response) => {
         // 🔥 SNAPSHOT DEL NIT DE LA COTIZACIÓN
         //////////////////////////////////////////////////////
 
-        const customerNitSnapshot =
-          quotation.customerNitSnapshot ?? null;
-
-        const customerNitCompanySnapshot =
-          quotation.customerNitCompanySnapshot ?? null;
+        const customerNitSnapshot = quotation.customerNitSnapshot ?? null;
+        const customerNitCompanySnapshot = quotation.customerNitCompanySnapshot ?? null;
 
         //////////////////////////////////////////////////////
         // 🔥 INCREMENTAR CONTADOR Y GENERAR CÓDIGO
@@ -609,7 +626,7 @@ export const convertQuotationToSale = async (req: Request, res: Response) => {
           where: { id: newSale.id },
           include: {
             customer: {
-              include: { nits: true }, // 🔄 incluir nits
+              include: { nits: true },
             },
             location: true,
             employee: true,
@@ -645,6 +662,10 @@ export const convertQuotationToSale = async (req: Request, res: Response) => {
     });
   }
 };
+
+// =====================================================
+// 🔥 GET QUOTATIONS BY CUSTOMER
+// =====================================================
 
 export const getQuotationsByCustomer = async (req: Request, res: Response) => {
   try {

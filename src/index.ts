@@ -9,10 +9,12 @@ import employeeSocketInstance from './sockets/trbajador.sockets'
 import rolSocketInstance from './sockets/roles.sockets'
 import { initNotificationSocket } from './sockets/notification.sockets'
 import { seedGenericCustomer } from './utils/genericCustomer'
+import { startExpireQuotationsJob } from "./utils/expireQuotations.job ";
 
 config()
 
 const port = process.env.PORT
+startExpireQuotationsJob();
 
 const server = http.createServer(app)
 const io = new SocketServer(server, {
