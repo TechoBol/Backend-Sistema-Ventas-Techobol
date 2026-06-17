@@ -29,6 +29,7 @@ model Location {
   toTransfers   Transfer[] @relation("ToTransfer")
 
   importaciones Importacion[]
+  SaleDetail    SaleDetail[]
 }
 
 enum LocationType {
@@ -308,7 +309,13 @@ model Sale {
 
 enum SaleStatus {
   COMPLETED
+  PENDING
   CANCELLED
+}
+
+enum DeliveryStatus {
+  PENDING
+  DELIVERED
 }
 
 model SaleDetail {
@@ -329,6 +336,14 @@ model SaleDetail {
   unitPrice    Float
   itemDiscount Float  @default(0)
   subtotal     Float
+
+  outputLocationId Int?
+  outputLocation   Location? @relation(fields: [outputLocationId], references: [id])
+
+  deliveryStatus DeliveryStatus @default(PENDING)
+
+  deliveredAt DateTime?
+  deliveredBy Int?
 }
 
 model Quotation {

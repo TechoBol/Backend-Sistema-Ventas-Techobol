@@ -5,6 +5,7 @@ import {
   getKardexPro,
   getProducts,
   getStockByBranches,
+  getValuedInventory,
   updateMargenProduct,
   updateProduct,
 } from "../controllers/product.controller";
@@ -18,5 +19,6 @@ router.post("/kardex", getKardex);
 router.post("/kardex-pro", getKardexPro);
 router.put("/update-margen/:id", updateMargenProduct);
 router.get("/stock-branches/:productId", getStockByBranches);
+router.post("/kardex-valorado", getValuedInventory);
 
 export default router;

@@ -3,7 +3,7 @@ import prisma from "../config/db";
 // Include reutilizable para todas las queries que necesitan generar PDF
 const SALE_PDF_INCLUDE = {
   customer: true,
-  location: true,               // trae address, name, abbreviation, etc.
+  location: true, // trae address, name, abbreviation, etc.
   employee: {
     select: {
       name: true,
@@ -11,7 +11,7 @@ const SALE_PDF_INCLUDE = {
     },
   },
   customerAddress: true,
-  customerNit: true,            // el registro CustomerNit relacionado
+  customerNit: true, // el registro CustomerNit relacionado
   details: {
     include: {
       product: {
@@ -55,7 +55,7 @@ const SALE_LIST_SELECT = {
     select: {
       id: true,
       name: true,
-      address: true,        // ← necesario para el PDF (cabecera empresa)
+      address: true, // ← necesario para el PDF (cabecera empresa)
       abbreviation: true,
     },
   },
@@ -69,16 +69,17 @@ const SALE_LIST_SELECT = {
 
   details: {
     include: {
-      product: {
-        select: {
-          id: true,
-          name: true,
-          code: true,
-        },
-      },
+      product: true,
       productUnit: {
         include: {
           unit: true,
+        },
+      },
+
+      outputLocation: {
+        select: {
+          id: true,
+          name: true,
         },
       },
     },
@@ -207,8 +208,26 @@ export const getSalesRepo = async (
   isManagement: boolean,
 ) => {
   return prisma.sale.findMany({
-    where: isManagement ? {} : { locationId },
+    where: isManagement
+      ? {}
+      : {
+          OR: [
+            {
+              locationId,
+            },
+            {
+              details: {
+                some: {
+                  outputLocationId: locationId,
+                },
+              },
+            },
+          ],
+        },
+
     select: SALE_LIST_SELECT,
-    orderBy: { date: "desc" },
+    orderBy: {
+      date: "desc",
+    },
   });
 };

@@ -12,6 +12,7 @@ import {
   getKardexRepo,
   updateMargenProductRepo,
   getStockByBranchesRepo,
+  getValuedInventoryRepo,
 } from "../repository/product.repository";
 
 //////////////////////////////////////////////////////////
@@ -520,6 +521,57 @@ export const getStockByBranches = async (req: Request, res: Response) => {
   } catch {
     return res.status(500).json({
       message: "No se pudo obtener el stock por sucursales",
+    });
+  }
+};
+
+export const getValuedInventory = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const {
+      locationId,
+      productId,
+      lineId,
+      brand,
+    } = req.body;
+
+    const inventory =
+      await getValuedInventoryRepo(
+        locationId &&
+          Number(locationId) > 0
+          ? Number(locationId)
+          : undefined,
+
+        productId &&
+          Number(productId) > 0
+          ? Number(productId)
+          : undefined,
+
+        lineId &&
+          Number(lineId) > 0
+          ? Number(lineId)
+          : undefined,
+
+        brand &&
+          brand !== "TODAS"
+          ? brand
+          : undefined,
+      );
+
+    return res.status(200).json(
+      inventory,
+    );
+  } catch (error) {
+    console.error(
+      "ERROR INVENTARIO VALORADO:",
+      error,
+    );
+
+    return res.status(500).json({
+      message:
+        "No se pudo generar el inventario valorado",
     });
   }
 };
