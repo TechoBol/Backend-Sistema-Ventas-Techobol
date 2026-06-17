@@ -1464,3 +1464,24 @@ export const updateMargenProductRepo = async (
     });
   });
 };
+
+//////////////////////////////////////////////////////////
+// GET STOCK BY BRANCHES
+//////////////////////////////////////////////////////////
+
+export const getStockByBranchesRepo = async (productId: number) => {
+  return prisma.inventory.findMany({
+    where: {
+      productId,
+    },
+    include: {
+      location: {
+        select: {
+          id: true,
+          name: true,
+          abbreviation: true,
+        },
+      },
+    },
+  });
+};

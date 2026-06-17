@@ -11,6 +11,7 @@ import {
   getKardexRepository,
   getKardexRepo,
   updateMargenProductRepo,
+  getStockByBranchesRepo,
 } from "../repository/product.repository";
 
 //////////////////////////////////////////////////////////
@@ -480,6 +481,45 @@ export const updateMargenProduct = async (req: Request, res: Response) => {
 
     return res.status(500).json({
       message: error.message || "No se pudo actualizar el margen",
+    });
+  }
+};
+
+//////////////////////////////////////////////////////////
+// GET STOCK BY BRANCHES
+//////////////////////////////////////////////////////////
+
+export const getStockByBranches = async (req: Request, res: Response) => {
+  try {
+    const token = req.headers["x-access-token"] as string;
+    const user = jwt.verify(token, process.env.JWTSECRET!) as any;
+
+    // Solo levels que NO pueden cambiar sucursal pueden usar esto
+    // Ajusta los levels según tu lógica
+    const canChangeBranch = user.level === 1 || user.level === 2;
+
+    const productId = Number(req.params.productId);
+
+    if (isNaN(productId)) {
+      return res.status(400).json({ message: "productId inválido" });
+    }
+
+    const branches = await getStockByBranchesRepo(productId);
+
+    return res.json({
+      // Le avisamos al front si puede o no cambiar sucursal
+      // para que sepa si mostrar el expand o no
+      canChangeBranch,
+      branches: branches.map((inv) => ({
+        locationId:   inv.location.id,
+        locationName: inv.location.name,
+        abbreviation: inv.location.abbreviation,
+        stock:        inv.quantity,
+      })),
+    });
+  } catch {
+    return res.status(500).json({
+      message: "No se pudo obtener el stock por sucursales",
     });
   }
 };
