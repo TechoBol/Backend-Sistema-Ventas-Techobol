@@ -1464,3 +1464,234 @@ export const updateMargenProductRepo = async (
     });
   });
 };
+
+//////////////////////////////////////////////////////////
+// GET STOCK BY BRANCHES
+//////////////////////////////////////////////////////////
+
+export const getStockByBranchesRepo = async (productId: number) => {
+  return prisma.inventory.findMany({
+    where: {
+      productId,
+    },
+    include: {
+      location: {
+        select: {
+          id: true,
+          name: true,
+          abbreviation: true,
+        },
+      },
+    },
+  });
+};
+
+export const getValuedInventoryRepo = async (
+  locationId?: number,
+  productId?: number,
+  lineId?: number,
+  brand?: string,
+) => {
+  const inventory =
+    await prisma.inventory.findMany({
+      where: {
+        quantity: {
+          gt: 0,
+        },
+
+        ...(locationId && {
+          locationId,
+        }),
+
+        ...(productId && {
+          productId,
+        }),
+
+        product: {
+          ...(lineId && {
+            lineId,
+          }),
+
+          ...(brand && {
+            brandName: brand,
+          }),
+        },
+      },
+
+      include: {
+        location: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+
+        product: {
+          select: {
+            id: true,
+            code: true,
+            name: true,
+
+            purchasePrice: true,
+
+            brandName: true,
+
+            baseUnit: {
+              select: {
+                name: true,
+              },
+            },
+
+            line: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
+      },
+
+      orderBy: {
+        product: {
+          name: "asc",
+        },
+      },
+    });
+
+  //////////////////////////////////////////////////////
+  // SUCURSAL ESPECÍFICA
+  //////////////////////////////////////////////////////
+
+  if (locationId) {
+    return inventory.map((item) => ({
+      productId:
+        item.product.id,
+
+      codigo:
+        item.product.code,
+
+      descripcion:
+        item.product.name,
+
+      linea:
+        item.product.line?.name ||
+        "",
+
+      marca:
+        item.product.brandName ||
+        "",
+
+      unidad:
+        item.product.baseUnit.name,
+
+      cantidad:
+        item.quantity,
+
+      costoUnitario:
+        Number(
+          item.averageCost.toFixed(2),
+        ),
+
+      valor:
+        Number(
+          (
+            item.quantity *
+            item.averageCost
+          ).toFixed(2),
+        ),
+
+      locationId:
+        item.location.id,
+
+      locationName:
+        item.location.name,
+    }));
+  }
+
+  //////////////////////////////////////////////////////
+  // TODAS LAS SUCURSALES
+  //////////////////////////////////////////////////////
+
+  const grouped = new Map();
+
+  inventory.forEach((item) => {
+    const key =
+      item.product.id;
+
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        productId:
+          item.product.id,
+
+        codigo:
+          item.product.code,
+
+        descripcion:
+          item.product.name,
+
+        linea:
+          item.product.line?.name ||
+          "",
+
+        marca:
+          item.product.brandName ||
+          "",
+
+        unidad:
+          item.product.baseUnit.name,
+
+        costoUnitario:
+          item.product.purchasePrice,
+
+        cantidad: 0,
+      });
+    }
+
+    const current =
+      grouped.get(key);
+
+    current.cantidad +=
+      item.quantity;
+  });
+
+  return Array.from(
+    grouped.values(),
+  ).map((item: any) => ({
+    productId:
+      item.productId,
+
+    codigo:
+      item.codigo,
+
+    descripcion:
+      item.descripcion,
+
+    linea:
+      item.linea,
+
+    marca:
+      item.marca,
+
+    unidad:
+      item.unidad,
+
+    cantidad:
+      Number(
+        item.cantidad.toFixed(2),
+      ),
+
+    costoUnitario:
+      Number(
+        item.costoUnitario.toFixed(2),
+      ),
+
+    valor:
+      Number(
+        (
+          item.cantidad *
+          item.costoUnitario
+        ).toFixed(2),
+      ),
+  }));
+};

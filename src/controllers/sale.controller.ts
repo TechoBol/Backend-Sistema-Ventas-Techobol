@@ -45,7 +45,7 @@ export const createSale = async (req: Request, res: Response) => {
       businessName,
       occupation,
       nitId,
-      glosa
+      glosa,
     } = req.body;
 
     const token = req.headers["x-access-token"] as string;
@@ -53,28 +53,52 @@ export const createSale = async (req: Request, res: Response) => {
 
     const sale = await prisma.$transaction(
       async (tx) => {
-        
         //////////////////////////////////////////////////////
         // 🔥 VALIDAR STOCK (agrupado por producto)
         //////////////////////////////////////////////////////
 
-        const requiredByProduct = new Map<number, number>();
+        const requiredByProductLocation = new Map();
 
         for (const item of products) {
+          const stockLocationId = Number(item.outputLocationId) || locationId;
+
           const realQuantity = Number(item.quantity) * Number(item.equivalence);
-          requiredByProduct.set(
-            item.productId,
-            (requiredByProduct.get(item.productId) || 0) + realQuantity,
-          );
+
+          const key = `${item.productId}-${stockLocationId}`;
+
+          const current = requiredByProductLocation.get(key) || 0;
+
+          requiredByProductLocation.set(key, current + realQuantity);
         }
 
-        for (const [productId, requiredQuantity] of requiredByProduct.entries()) {
-          const inventory = await getInventoryRepo(tx, productId, locationId);
-          const product = await getProductRepo(tx, productId);
+        for (const [
+          key,
+          requiredQuantity,
+        ] of requiredByProductLocation.entries()) {
+          const [productId, stockLocationId] = key.split("-").map(Number);
 
+          const inventory = await getInventoryRepo(
+            tx,
+            productId,
+            stockLocationId,
+          );
+
+          const product = await getProductRepo(tx, productId);
+          const location = await tx.location.findUnique({
+            where: {
+              id: stockLocationId,
+            },
+            select: {
+              name: true,
+            },
+          });
           if (!inventory || inventory.quantity < requiredQuantity) {
             throw new Error(
-              `Stock insuficiente para "${product?.name || `producto ID ${productId}`}". Disponible: ${inventory?.quantity || 0}, requerido: ${requiredQuantity}`,
+              `El producto "${product?.name}" no tiene stock suficiente en "${
+                location?.name || "Desconocida"
+              }". Disponible: ${
+                inventory?.quantity || 0
+              }, Requerido: ${requiredQuantity}`,
             );
           }
         }
@@ -316,7 +340,8 @@ export const createSale = async (req: Request, res: Response) => {
             where: { isGeneric: true },
           });
 
-          if (!genericCustomer) throw new Error("Cliente genérico no encontrado");
+          if (!genericCustomer)
+            throw new Error("Cliente genérico no encontrado");
           customerId = genericCustomer.id;
         }
 
@@ -375,6 +400,7 @@ export const createSale = async (req: Request, res: Response) => {
         //////////////////////////////////////////////////////
 
         for (const item of products) {
+          const stockLocationId = Number(item.outputLocationId) || locationId;
           const product = await getProductRepo(tx, item.productId);
           if (!product)
             throw new Error(`Producto ID ${item.productId} no encontrado`);
@@ -386,7 +412,7 @@ export const createSale = async (req: Request, res: Response) => {
           const inventory = await getInventoryRepo(
             tx,
             item.productId,
-            locationId,
+            stockLocationId,
           );
           if (!inventory)
             throw new Error(
@@ -409,19 +435,26 @@ export const createSale = async (req: Request, res: Response) => {
             unitPrice,
             itemDiscount,
             subtotal: detailSubtotal,
+
+            outputLocationId: stockLocationId,
+
+            deliveryStatus: "PENDING",
+
+            deliveredAt: null,
+            deliveredBy: null,
           });
 
           await updateInventoryRepo(
             tx,
             item.productId,
-            locationId,
+            stockLocationId,
             realQuantity,
           );
 
           await createStockMovementRepo(tx, {
             productId: item.productId,
             productUnitId: item.productUnitId,
-            fromLocationId: locationId,
+            fromLocationId: stockLocationId,
             quantity: realQuantity,
             presentationQuantity: Number(item.quantity),
             type: "OUT",
@@ -469,7 +502,8 @@ export const getSales = async (req: Request, res: Response) => {
   try {
     const token = req.headers["x-access-token"] as string;
     const user = jwt.verify(token, process.env.JWTSECRET!) as any;
-    const isManagement = user.level === 1 || user.level === 5 || user.level === 2;
+    const isManagement =
+      user.level === 1 || user.level === 5 || user.level === 2;
     const data = await getSalesRepo(Number(user.locationId), isManagement);
     return res.json(data);
   } catch (error) {
@@ -578,5 +612,66 @@ export const updateSaleDate = async (req: Request, res: Response) => {
     return res.json(updated);
   } catch (error) {
     return res.status(500).json({ error: "Error al actualizar la fecha" });
+  }
+};
+
+export const deliverSaleProducts = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const token = req.headers["x-access-token"] as string;
+
+    const user = jwt.verify(
+      token,
+      process.env.JWTSECRET!
+    ) as any;
+
+    const saleId = Number(req.params.saleId);
+
+    if (isNaN(saleId)) {
+      return res.status(400).json({
+        message: "ID de venta inválido",
+      });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.saleDetail.updateMany({
+        where: {
+          saleId,
+          outputLocationId: user.locationId,
+          deliveryStatus: "PENDING",
+        },
+        data: {
+          deliveryStatus: "DELIVERED",
+          deliveredAt: new Date(),
+          deliveredBy: user.id,
+        },
+      });
+
+      const pending = await tx.saleDetail.count({
+        where: {
+          saleId,
+          deliveryStatus: "PENDING",
+        },
+      });
+
+      if (pending === 0) {
+        await tx.sale.update({
+          where: { id: saleId },
+          data: {
+            status: "COMPLETED",
+          },
+        });
+      }
+    });
+
+    return res.json({
+      message: "Entrega registrada",
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      message: error.message,
+    });
   }
 };
