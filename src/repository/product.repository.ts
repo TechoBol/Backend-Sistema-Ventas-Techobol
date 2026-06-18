@@ -1491,207 +1491,215 @@ export const getValuedInventoryRepo = async (
   productId?: number,
   lineId?: number,
   brand?: string,
+  hasta?: Date,
 ) => {
-  const inventory =
-    await prisma.inventory.findMany({
-      where: {
-        quantity: {
-          gt: 0,
+  const movements = await prisma.stockMovement.findMany({
+    where: {
+      ...(productId && { productId }),
+
+      ...(hasta && {
+        createdAt: {
+          lte: hasta,
         },
+      }),
+    },
 
-        ...(locationId && {
-          locationId,
-        }),
-
-        ...(productId && {
-          productId,
-        }),
-
-        product: {
-          ...(lineId && {
-            lineId,
-          }),
-
-          ...(brand && {
-            brandName: brand,
-          }),
+    include: {
+      product: {
+        include: {
+          line: true,
+          baseUnit: true,
         },
       },
+    },
 
-      include: {
-        location: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-
-        product: {
-          select: {
-            id: true,
-            code: true,
-            name: true,
-
-            purchasePrice: true,
-
-            brandName: true,
-
-            baseUnit: {
-              select: {
-                name: true,
-              },
-            },
-
-            line: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
-          },
-        },
-      },
-
-      orderBy: {
-        product: {
-          name: "asc",
-        },
-      },
-    });
+    orderBy: {
+      createdAt: "asc",
+    },
+  });
 
   //////////////////////////////////////////////////////
-  // SUCURSAL ESPECÍFICA
+  // AGRUPAR STOCK HISTÓRICO
   //////////////////////////////////////////////////////
 
-  if (locationId) {
-    return inventory.map((item) => ({
-      productId:
-        item.product.id,
+  const grouped = new Map<number, any>();
 
-      codigo:
-        item.product.code,
+  for (const movement of movements) {
+    const product = movement.product;
 
-      descripcion:
-        item.product.name,
+    if (lineId && product.lineId !== lineId) continue;
 
-      linea:
-        item.product.line?.name ||
-        "",
+    if (brand && product.brandName !== brand) continue;
 
-      marca:
-        item.product.brandName ||
-        "",
+    if (!grouped.has(product.id)) {
+      grouped.set(product.id, {
+        productId: product.id,
 
-      unidad:
-        item.product.baseUnit.name,
+        codigo: product.code,
 
-      cantidad:
-        item.quantity,
+        descripcion: product.name,
 
-      costoUnitario:
-        Number(
-          item.averageCost.toFixed(2),
-        ),
+        linea: product.line?.name || "",
 
-      valor:
-        Number(
-          (
-            item.quantity *
-            item.averageCost
-          ).toFixed(2),
-        ),
+        marca: product.brandName || "",
 
-      locationId:
-        item.location.id,
+        unidadId: product.baseUnit.id,
 
-      locationName:
-        item.location.name,
-    }));
-  }
+        unidad: product.baseUnit.name,
 
-  //////////////////////////////////////////////////////
-  // TODAS LAS SUCURSALES
-  //////////////////////////////////////////////////////
-
-  const grouped = new Map();
-
-  inventory.forEach((item) => {
-    const key =
-      item.product.id;
-
-    if (!grouped.has(key)) {
-      grouped.set(key, {
-        productId:
-          item.product.id,
-
-        codigo:
-          item.product.code,
-
-        descripcion:
-          item.product.name,
-
-        linea:
-          item.product.line?.name ||
-          "",
-
-        marca:
-          item.product.brandName ||
-          "",
-
-        unidad:
-          item.product.baseUnit.name,
-
-        costoUnitario:
-          item.product.purchasePrice,
+        unidadCodigo: product.baseUnit.code,
 
         cantidad: 0,
       });
     }
 
-    const current =
-      grouped.get(key);
+    const item = grouped.get(product.id);
 
-    current.cantidad +=
-      item.quantity;
-  });
+    //////////////////////////////////////////////////////
+    // TODAS LAS SUCURSALES
+    //////////////////////////////////////////////////////
 
-  return Array.from(
-    grouped.values(),
-  ).map((item: any) => ({
-    productId:
-      item.productId,
+    if (!locationId) {
+      switch (movement.type) {
+        case "IN":
+          item.cantidad += movement.quantity;
+          break;
 
-    codigo:
-      item.codigo,
+        case "OUT":
+          item.cantidad -= movement.quantity;
+          break;
 
-    descripcion:
-      item.descripcion,
+        case "TRANSFER":
+          // No afecta el stock global
+          break;
 
-    linea:
-      item.linea,
+        case "ADJUSTMENT":
+          item.cantidad += movement.quantity;
+          break;
+      }
 
-    marca:
-      item.marca,
+      continue;
+    }
 
-    unidad:
-      item.unidad,
+    //////////////////////////////////////////////////////
+    // SUCURSAL ESPECÍFICA
+    //////////////////////////////////////////////////////
 
-    cantidad:
-      Number(
-        item.cantidad.toFixed(2),
-      ),
+    switch (movement.type) {
+      case "IN":
+        if (movement.toLocationId === locationId) {
+          item.cantidad += movement.quantity;
+        }
+        break;
 
-    costoUnitario:
-      Number(
-        item.costoUnitario.toFixed(2),
-      ),
+      case "OUT":
+        if (movement.fromLocationId === locationId) {
+          item.cantidad -= movement.quantity;
+        }
+        break;
 
-    valor:
-      Number(
-        (
-          item.cantidad *
-          item.costoUnitario
-        ).toFixed(2),
-      ),
-  }));
+      case "TRANSFER":
+        if (movement.fromLocationId === locationId) {
+          item.cantidad -= movement.quantity;
+        }
+
+        if (movement.toLocationId === locationId) {
+          item.cantidad += movement.quantity;
+        }
+        break;
+
+      case "ADJUSTMENT":
+        if (
+          movement.toLocationId === locationId ||
+          movement.fromLocationId === locationId
+        ) {
+          item.cantidad += movement.quantity;
+        }
+        break;
+    }
+  }
+
+  //////////////////////////////////////////////////////
+  // COSTOS INVENTARIO POR SUCURSAL
+  //////////////////////////////////////////////////////
+
+  let inventoryCostMap = new Map<number, number>();
+
+  if (locationId) {
+    const inventories = await prisma.inventory.findMany({
+      where: {
+        locationId,
+        productId: {
+          in: Array.from(grouped.keys()),
+        },
+      },
+
+      select: {
+        productId: true,
+        averageCost: true,
+      },
+    });
+
+    inventoryCostMap = new Map(
+      inventories.map((i) => [
+        i.productId,
+        Number(i.averageCost),
+      ]),
+    );
+  }
+
+  //////////////////////////////////////////////////////
+  // RESULTADO FINAL
+  //////////////////////////////////////////////////////
+
+  return Array.from(grouped.values())
+    .filter((item) => item.cantidad > 0)
+    .map((item) => {
+      let costoUnitario = 0;
+
+      ////////////////////////////////////////////////////
+      // SUCURSAL -> COSTO PROMEDIO INVENTARIO
+      ////////////////////////////////////////////////////
+
+      if (locationId) {
+        costoUnitario =
+          inventoryCostMap.get(item.productId) || 0;
+      }
+
+      ////////////////////////////////////////////////////
+      // TODAS -> COSTO DEL PRODUCTO
+      ////////////////////////////////////////////////////
+
+      else {
+        const productMovement = movements.find(
+          (m) => m.productId === item.productId,
+        );
+
+        costoUnitario =
+          Number(productMovement?.product.purchasePrice) || 0;
+      }
+
+      return {
+        productId: item.productId,
+
+        codigo: item.codigo,
+
+        descripcion: item.descripcion,
+
+        linea: item.linea,
+
+        marca: item.marca,
+
+        unidad: item.unidad,
+
+        cantidad: Number(item.cantidad),
+
+        costoUnitario: Number(costoUnitario),
+
+        valor: Number(item.cantidad * costoUnitario),
+      };
+    })
+    .sort((a, b) =>
+      a.descripcion.localeCompare(b.descripcion),
+    );
 };
