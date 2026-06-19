@@ -59,6 +59,7 @@ model Employee {
 
   requestedTransfers Transfer[] @relation("RequestedBy")
   approvedTransfers  Transfer[] @relation("ApprovedBy")
+  editedTransfers    Transfer[] @relation("EditedBy")
 
   notificationReads NotificationRead[]
 }
@@ -211,8 +212,11 @@ model Transfer {
 
   status TransferStatus @default(PENDING)
 
-  createdAt DateTime  @default(now())
-  editedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  editedAt   DateTime?
+  editedById Int?
+  editedBy   Employee? @relation("EditedBy", fields: [editedById], references: [id])
+  editReason String?
 
   requestedById Int
   requestedBy   Employee @relation("RequestedBy", fields: [requestedById], references: [id])

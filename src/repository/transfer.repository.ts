@@ -130,6 +130,12 @@ export const getTransfersByLocationRepo = async () => {
         },
       },
 
+      editedBy: {
+        select: {
+          name: true,
+          lastName: true,
+        },
+      },
       ////////////////////////////////////////
       // 🔥 APROBADOR
       ////////////////////////////////////////
@@ -240,11 +246,15 @@ export const approveTransferRepo = async (
         const sourceInventory = sourceMap.get(item.productId);
 
         if (!sourceInventory) {
-          throw new Error(`Inventario origen no encontrado ${item.product.name}`);
+          throw new Error(
+            `Inventario origen no encontrado ${item.product.name}`,
+          );
         }
 
         if (sourceInventory.quantity < item.quantity) {
-          throw new Error(`Stock insuficiente para producto ${item.product.name}`);
+          throw new Error(
+            `Stock insuficiente para producto ${item.product.name}`,
+          );
         }
       }
 
@@ -439,6 +449,8 @@ export const updateTransferRepo = async (
       quantity: number;
     }[];
     glosa?: string;
+    editReason?: string;
+    userId?: number;
   },
 ) => {
   return prisma.$transaction(async (tx) => {
@@ -491,6 +503,8 @@ export const updateTransferRepo = async (
         toLocationId: data.toLocationId,
         glosa: data.glosa,
         editedAt: new Date(),
+        editedById: data.userId,
+        editReason: data.editReason,
         items: {
           create: data.items,
         },
@@ -506,12 +520,13 @@ export const updateTransferRepo = async (
             id: true,
             name: true,
             lastName: true,
-            email: true,
-            role: {
-              select: {
-                name: true,
-              },
-            },
+          },
+        },
+
+        editedBy: {
+          select: {
+            name: true,
+            lastName: true,
           },
         },
 

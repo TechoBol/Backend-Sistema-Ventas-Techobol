@@ -150,7 +150,7 @@ export const updateTransfer = async (
   try {
     const token = req.headers["x-access-token"] as string;
 
-    jwt.verify(token, process.env.JWTSECRET!) as any;
+    const user = jwt.verify(token, process.env.JWTSECRET!) as any;
 
     const { id } = req.params;
 
@@ -158,6 +158,7 @@ export const updateTransfer = async (
       destinationId,
       items,
       glosa,
+      editReason,
     } = req.body;
 
     if (!items?.length) {
@@ -171,7 +172,9 @@ export const updateTransfer = async (
       {
         toLocationId: destinationId,
         items,
-        glosa,
+        glosa,  
+        editReason,
+        userId: user.id,
       },
     );
 
