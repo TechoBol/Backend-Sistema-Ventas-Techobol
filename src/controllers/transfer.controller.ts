@@ -5,6 +5,7 @@ import {
   createTransferRepo,
   getTransfersByLocationRepo,
   rejectTransferRepo,
+  updateTransferRepo,
 } from "../repository/transfer.repository";
 import { notificationRepository } from "../repository/notification.repository";
 
@@ -139,5 +140,48 @@ export const rejectTransfer = async (req: Request, res: Response) => {
     res.json(data);
   } catch (error: any) {
     res.status(400).json({ message: error.message });
+  }
+};
+
+export const updateTransfer = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const token = req.headers["x-access-token"] as string;
+
+    const user = jwt.verify(token, process.env.JWTSECRET!) as any;
+
+    const { id } = req.params;
+
+    const {
+      destinationId,
+      items,
+      glosa,
+      editReason,
+    } = req.body;
+
+    if (!items?.length) {
+      return res.status(400).json({
+        message: "Items requeridos",
+      });
+    }
+
+    const data = await updateTransferRepo(
+      Number(id),
+      {
+        toLocationId: destinationId,
+        items,
+        glosa,  
+        editReason,
+        userId: user.id,
+      },
+    );
+
+    return res.json(data);
+  } catch (error: any) {
+    return res.status(400).json({
+      message: error.message,
+    });
   }
 };

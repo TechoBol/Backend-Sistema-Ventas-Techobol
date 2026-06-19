@@ -634,7 +634,7 @@ export const deliverSaleProducts = async (
         message: "ID de venta inválido",
       });
     }
-
+    console.log("USER:", user);
     await prisma.$transaction(async (tx) => {
       await tx.saleDetail.updateMany({
         where: {

@@ -535,34 +535,40 @@ export const getValuedInventory = async (
       productId,
       lineId,
       brand,
+      hasta,
     } = req.body;
 
     const inventory =
       await getValuedInventoryRepo(
-        locationId &&
-          Number(locationId) > 0
+        locationId && Number(locationId) > 0
           ? Number(locationId)
           : undefined,
 
-        productId &&
-          Number(productId) > 0
+        productId && Number(productId) > 0
           ? Number(productId)
           : undefined,
 
-        lineId &&
-          Number(lineId) > 0
+        lineId && Number(lineId) > 0
           ? Number(lineId)
           : undefined,
 
-        brand &&
-          brand !== "TODAS"
+        brand && brand !== "TODAS"
           ? brand
+          : undefined,
+
+        hasta
+          ? new Date(
+              new Date(hasta).setHours(
+                23,
+                59,
+                59,
+                999,
+              ),
+            )
           : undefined,
       );
 
-    return res.status(200).json(
-      inventory,
-    );
+    return res.json(inventory);
   } catch (error) {
     console.error(
       "ERROR INVENTARIO VALORADO:",

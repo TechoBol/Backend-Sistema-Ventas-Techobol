@@ -13,6 +13,7 @@ model Location {
   type             LocationType
   address          String?
   abbreviation     String?
+  region           String?
   saleCounter      Int          @default(0)
   quotationCounter Int          @default(0)
   isVisible        Boolean      @default(true)
@@ -58,6 +59,7 @@ model Employee {
 
   requestedTransfers Transfer[] @relation("RequestedBy")
   approvedTransfers  Transfer[] @relation("ApprovedBy")
+  editedTransfers    Transfer[] @relation("EditedBy")
 
   notificationReads NotificationRead[]
 }
@@ -210,8 +212,14 @@ model Transfer {
 
   status TransferStatus @default(PENDING)
 
-  requestedBy   Employee @relation("RequestedBy", fields: [requestedById], references: [id])
+  createdAt  DateTime  @default(now())
+  editedAt   DateTime?
+  editedById Int?
+  editedBy   Employee? @relation("EditedBy", fields: [editedById], references: [id])
+  editReason String?
+
   requestedById Int
+  requestedBy   Employee @relation("RequestedBy", fields: [requestedById], references: [id])
 
   approvedBy   Employee? @relation("ApprovedBy", fields: [approvedById], references: [id])
   approvedById Int?
@@ -224,8 +232,6 @@ model Transfer {
 
   items     TransferItem[]
   movements StockMovement[]
-
-  createdAt DateTime @default(now())
 
   notifications Notification[]
 }

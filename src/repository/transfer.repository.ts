@@ -130,6 +130,12 @@ export const getTransfersByLocationRepo = async () => {
         },
       },
 
+      editedBy: {
+        select: {
+          name: true,
+          lastName: true,
+        },
+      },
       ////////////////////////////////////////
       // 🔥 APROBADOR
       ////////////////////////////////////////
@@ -182,8 +188,12 @@ export const approveTransferRepo = async (
           id: transferId,
         },
         include: {
-          items: true,
           requestedBy: true,
+          items: {
+            include: {
+              product: true,
+            },
+          },
         },
       });
 
@@ -232,14 +242,19 @@ export const approveTransferRepo = async (
       //////////////////////////////////////
 
       for (const item of transfer.items) {
+        console.log(item);
         const sourceInventory = sourceMap.get(item.productId);
 
         if (!sourceInventory) {
-          throw new Error(`Inventario origen no encontrado ${item.productId}`);
+          throw new Error(
+            `Inventario origen no encontrado ${item.product.name}`,
+          );
         }
 
         if (sourceInventory.quantity < item.quantity) {
-          throw new Error(`Stock insuficiente para producto ${item.productId}`);
+          throw new Error(
+            `Stock insuficiente para producto ${item.product.name}`,
+          );
         }
       }
 
@@ -422,5 +437,127 @@ export const rejectTransferRepo = async (
 
       approvedAt: new Date(),
     },
+  });
+};
+
+export const updateTransferRepo = async (
+  transferId: number,
+  data: {
+    toLocationId?: number;
+    items: {
+      productId: number;
+      quantity: number;
+    }[];
+    glosa?: string;
+    editReason?: string;
+    userId?: number;
+  },
+) => {
+  return prisma.$transaction(async (tx) => {
+    ////////////////////////////////////////
+    // 🔥 BUSCAR TRANSFERENCIA
+    ////////////////////////////////////////
+
+    const transfer = await tx.transfer.findUnique({
+      where: {
+        id: transferId,
+      },
+
+      include: {
+        items: true,
+      },
+    });
+
+    if (!transfer) {
+      throw new Error("Transferencia no encontrada");
+    }
+
+    ////////////////////////////////////////
+    // 🔥 VALIDAR STATUS
+    ////////////////////////////////////////
+
+    if (transfer.status !== "PENDING") {
+      throw new Error("Solo se pueden editar transferencias pendientes");
+    }
+
+    ////////////////////////////////////////
+    // 🔥 ELIMINAR ITEMS ANTERIORES
+    ////////////////////////////////////////
+
+    await tx.transferItem.deleteMany({
+      where: {
+        transferId,
+      },
+    });
+
+    ////////////////////////////////////////
+    // 🔥 ACTUALIZAR TRANSFER
+    ////////////////////////////////////////
+
+    return await tx.transfer.update({
+      where: {
+        id: transferId,
+      },
+
+      data: {
+        toLocationId: data.toLocationId,
+        glosa: data.glosa,
+        editedAt: new Date(),
+        editedById: data.userId,
+        editReason: data.editReason,
+        items: {
+          create: data.items,
+        },
+      },
+
+      include: {
+        fromLocation: true,
+
+        toLocation: true,
+
+        requestedBy: {
+          select: {
+            id: true,
+            name: true,
+            lastName: true,
+          },
+        },
+
+        editedBy: {
+          select: {
+            name: true,
+            lastName: true,
+          },
+        },
+
+        ////////////////////////////////////////
+        // 🔥 APROBADOR
+        ////////////////////////////////////////
+
+        approvedBy: {
+          select: {
+            id: true,
+            name: true,
+            lastName: true,
+            email: true,
+            role: {
+              select: {
+                name: true,
+              },
+            },
+          },
+        },
+
+        items: {
+          include: {
+            product: {
+              include: {
+                line: true,
+              },
+            },
+          },
+        },
+      },
+    });
   });
 };
