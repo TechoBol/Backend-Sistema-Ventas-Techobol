@@ -182,8 +182,12 @@ export const approveTransferRepo = async (
           id: transferId,
         },
         include: {
-          items: true,
           requestedBy: true,
+          items: {
+            include: {
+              product: true,
+            },
+          },
         },
       });
 
@@ -232,14 +236,15 @@ export const approveTransferRepo = async (
       //////////////////////////////////////
 
       for (const item of transfer.items) {
+        console.log(item);
         const sourceInventory = sourceMap.get(item.productId);
 
         if (!sourceInventory) {
-          throw new Error(`Inventario origen no encontrado ${item.productId}`);
+          throw new Error(`Inventario origen no encontrado ${item.product.name}`);
         }
 
         if (sourceInventory.quantity < item.quantity) {
-          throw new Error(`Stock insuficiente para producto ${item.productId}`);
+          throw new Error(`Stock insuficiente para producto ${item.product.name}`);
         }
       }
 
