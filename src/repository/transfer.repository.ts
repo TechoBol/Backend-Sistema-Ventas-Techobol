@@ -429,3 +429,120 @@ export const rejectTransferRepo = async (
     },
   });
 };
+
+export const updateTransferRepo = async (
+  transferId: number,
+  data: {
+    toLocationId?: number;
+    items: {
+      productId: number;
+      quantity: number;
+    }[];
+    glosa?: string;
+  },
+) => {
+  return prisma.$transaction(async (tx) => {
+    ////////////////////////////////////////
+    // 🔥 BUSCAR TRANSFERENCIA
+    ////////////////////////////////////////
+
+    const transfer = await tx.transfer.findUnique({
+      where: {
+        id: transferId,
+      },
+
+      include: {
+        items: true,
+      },
+    });
+
+    if (!transfer) {
+      throw new Error("Transferencia no encontrada");
+    }
+
+    ////////////////////////////////////////
+    // 🔥 VALIDAR STATUS
+    ////////////////////////////////////////
+
+    if (transfer.status !== "PENDING") {
+      throw new Error("Solo se pueden editar transferencias pendientes");
+    }
+
+    ////////////////////////////////////////
+    // 🔥 ELIMINAR ITEMS ANTERIORES
+    ////////////////////////////////////////
+
+    await tx.transferItem.deleteMany({
+      where: {
+        transferId,
+      },
+    });
+
+    ////////////////////////////////////////
+    // 🔥 ACTUALIZAR TRANSFER
+    ////////////////////////////////////////
+
+    return await tx.transfer.update({
+      where: {
+        id: transferId,
+      },
+
+      data: {
+        toLocationId: data.toLocationId,
+        glosa: data.glosa,
+        editedAt: new Date(),
+        items: {
+          create: data.items,
+        },
+      },
+
+      include: {
+        fromLocation: true,
+
+        toLocation: true,
+
+        requestedBy: {
+          select: {
+            id: true,
+            name: true,
+            lastName: true,
+            email: true,
+            role: {
+              select: {
+                name: true,
+              },
+            },
+          },
+        },
+
+        ////////////////////////////////////////
+        // 🔥 APROBADOR
+        ////////////////////////////////////////
+
+        approvedBy: {
+          select: {
+            id: true,
+            name: true,
+            lastName: true,
+            email: true,
+            role: {
+              select: {
+                name: true,
+              },
+            },
+          },
+        },
+
+        items: {
+          include: {
+            product: {
+              include: {
+                line: true,
+              },
+            },
+          },
+        },
+      },
+    });
+  });
+};
