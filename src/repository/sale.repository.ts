@@ -26,6 +26,12 @@ const SALE_PDF_INCLUDE = {
           unit: true,
         },
       },
+      outputLocation: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
     },
   },
 } as const;
@@ -102,12 +108,13 @@ export const incrementLocationCounterRepo = async (
   tx: any,
   locationId: number,
 ) => {
-  return await tx.location.update({
+  const result = await tx.location.update({
     where: { id: locationId },
     data: {
       saleCounter: { increment: 1 },
     },
   });
+  return result;
 };
 
 //////////////////////////////////////////////////////////

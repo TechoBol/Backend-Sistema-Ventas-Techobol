@@ -22,8 +22,6 @@ import { notificationRepository } from "../repository/notification.repository";
 // =====================================================
 
 export const createSale = async (req: Request, res: Response) => {
-  console.log("BODY COMPLETO:");
-  console.log(req.body);
   try {
     const {
       locationId,
@@ -50,13 +48,11 @@ export const createSale = async (req: Request, res: Response) => {
 
     const token = req.headers["x-access-token"] as string;
     const user = jwt.verify(token, process.env.JWTSECRET!) as any;
-
     const sale = await prisma.$transaction(
       async (tx) => {
         //////////////////////////////////////////////////////
         // 🔥 VALIDAR STOCK (agrupado por producto)
         //////////////////////////////////////////////////////
-
         const requiredByProductLocation = new Map();
 
         for (const item of products) {
@@ -106,7 +102,6 @@ export const createSale = async (req: Request, res: Response) => {
         //////////////////////////////////////////////////////
         // 🔥 SNAPSHOT DEL NIT SELECCIONADO
         //////////////////////////////////////////////////////
-
         let customerNitSnapshot: string | null = null;
         let customerNitCompanySnapshot: string | null = null;
 
@@ -132,11 +127,9 @@ export const createSale = async (req: Request, res: Response) => {
         //////////////////////////////////////////////////////
         // 🔥 VALIDAR EMPLEADO
         //////////////////////////////////////////////////////
-
         const employee = await tx.employee.findUnique({
           where: { id: Number(user.id) },
         });
-
         if (!employee) throw new Error("Empleado no encontrado");
 
         //////////////////////////////////////////////////////
@@ -350,8 +343,12 @@ export const createSale = async (req: Request, res: Response) => {
         //////////////////////////////////////////////////////
 
         const location = await incrementLocationCounterRepo(tx, locationId);
+
+
         const saleNumber = location.saleCounter;
         const code = `${location.abbreviation}-${saleNumber}`;
+
+        console.log("8 CREANDO SALE");
 
         //////////////////////////////////////////////////////
         // 🔥 DESCUENTO TOTAL
@@ -369,7 +366,6 @@ export const createSale = async (req: Request, res: Response) => {
           customerNitSnapshot,
           customerNitCompanySnapshot,
         });
-
         const newSale = await createSaleRepo(tx, {
           employeeId: Number(user.id),
           locationId,
@@ -392,7 +388,6 @@ export const createSale = async (req: Request, res: Response) => {
           glosa,
           customerNitId: nitId ? Number(nitId) : null,
         });
-
         console.log("SALE CREADA:", newSale);
 
         //////////////////////////////////////////////////////
@@ -472,6 +467,7 @@ export const createSale = async (req: Request, res: Response) => {
       },
       { timeout: 15000 },
     );
+    console.log("notificacion");
 
     try {
       await notificationRepository.createForAll({
@@ -615,17 +611,11 @@ export const updateSaleDate = async (req: Request, res: Response) => {
   }
 };
 
-export const deliverSaleProducts = async (
-  req: Request,
-  res: Response
-) => {
+export const deliverSaleProducts = async (req: Request, res: Response) => {
   try {
     const token = req.headers["x-access-token"] as string;
 
-    const user = jwt.verify(
-      token,
-      process.env.JWTSECRET!
-    ) as any;
+    const user = jwt.verify(token, process.env.JWTSECRET!) as any;
 
     const saleId = Number(req.params.saleId);
 
