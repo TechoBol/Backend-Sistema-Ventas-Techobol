@@ -140,6 +140,64 @@ export const getDashboardSummary = async (locationId?: number) => {
     total: c._sum.total || 0,
   }));
 
+  //Mejores vendedores por sucursal y general
+  const vendedoresGroup = await prisma.sale.groupBy({
+    by: ["employeeId"],
+    where: { status: "COMPLETED", date: { gte: startMonth, lte: endMonth }, ...locationFilter },
+    _count: { id: true },
+    orderBy: { _count: { id: "desc" } },
+    take: locationId ? 1 : 5,
+  });
+  const employeeIds = vendedoresGroup.map((v) => v.employeeId);
+  const employeesData = await prisma.employee.findMany({
+    where: { id: { in: employeeIds } },
+    select: { id: true, name: true, lastName: true },
+  });
+  const employeesMap = Object.fromEntries(employeesData.map((e) => [e.id, `${e.name} ${e.lastName}`]));
+  const vendedores_top = vendedoresGroup.map((v) => ({
+    nombre: employeesMap[v.employeeId] || "Empleado",
+    transacciones: v._count.id,
+  }));
+
+  //productos sin movimiento por mas de 30 dias
+  const hace30Dias = new Date();
+  hace30Dias.setDate(hace30Dias.getDate() - 30);
+
+  const productosConMovimiento = await prisma.saleDetail.findMany({
+    where: {
+      sale: { status: "COMPLETED", date: { gte: hace30Dias }, ...locationFilter },
+    },
+    select: { productId: true },
+    distinct: ["productId"],
+  });
+  const idsConMovimiento = productosConMovimiento.map((p) => p.productId);
+
+  const sin_movimiento = await prisma.product.findMany({
+    where: {
+      id: { notIn: idsConMovimiento },
+      isVisible: true,
+      ...(locationId ? { inventories: { some: { locationId, quantity: { gt: 0 } } } } : {}),
+    },
+    select: { id: true, name: true },
+    take: 10,
+  });
+
+  //Grafico de estado de cotizaciones
+  const cotizacionesEstados = await prisma.quotation.groupBy({
+    by: ["status"],
+    where: { ...(locationId ? { locationId } : {}) },
+    _count: { id: true },
+  });
+  const estadosMap = Object.fromEntries(
+    cotizacionesEstados.map((c) => [c.status, c._count.id])
+  );
+  const cotizaciones_estados = {
+    pendientes: estadosMap["PENDING"] ?? 0,
+    aprobadas: estadosMap["APPROVED"] ?? 0,
+    rechazadas: estadosMap["REJECTED"] ?? 0,
+    vencidas: estadosMap["EXPIRED"] ?? 0,
+  };
+
   return {
     kpis: {
       venta_dia: ventasHoy._sum.total || 0,
@@ -154,5 +212,8 @@ export const getDashboardSummary = async (locationId?: number) => {
     productos_top,
     sucursales_top,
     clientes_top,
+    vendedores_top,
+    sin_movimiento,
+    cotizaciones_estados,
   };
 };

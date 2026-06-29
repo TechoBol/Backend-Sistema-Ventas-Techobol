@@ -424,18 +424,58 @@ export const approveTransferRepo = async (
 export const rejectTransferRepo = async (
   transferId: number,
   approvedById: number,
+  rejectionReason: string,
 ) => {
   return prisma.transfer.update({
     where: {
       id: transferId,
     },
-
     data: {
       status: "REJECTED",
-
       approvedById,
-
       approvedAt: new Date(),
+      rejectionReason,
+    },
+    include: {
+      fromLocation: true,
+      toLocation: true,
+      requestedBy: {
+        select: {
+          id: true,
+          name: true,
+          lastName: true,
+          email: true,
+          role: {
+            select: {
+              name: true,
+            },
+          },
+        },
+      },
+
+      ////////////////////////////////////////
+      // 🔥 APROBADOR
+      ////////////////////////////////////////
+
+      approvedBy: {
+        select: {
+          id: true,
+          name: true,
+          lastName: true,
+          email: true,
+          role: {
+            select: {
+              name: true,
+            },
+          },
+        },
+      },
+
+      items: {
+        include: {
+          product: true,
+        },
+      },
     },
   });
 };

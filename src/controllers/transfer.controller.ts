@@ -8,6 +8,10 @@ import {
   updateTransferRepo,
 } from "../repository/transfer.repository";
 import { notificationRepository } from "../repository/notification.repository";
+import { approvedTransferNotification } from "../notifications/approvedTransferNotification";
+import { requestedTransferNotification } from "../notifications/requestedTransferNotification";
+import { rejectedTransferNotification } from "../notifications/rejectedTransferNotification";
+import { editedTransferNotification } from "../notifications/editedTransferNotification";
 
 export const createTransfer = async (req: Request, res: Response) => {
   try {
@@ -26,7 +30,7 @@ export const createTransfer = async (req: Request, res: Response) => {
       items,
       glosa,
     });
-    console.log(data)
+    console.log(data);
     let dataAprobado;
     /*if (destinationId) {
       dataAprobado = await approveTransferRepo(data.id, user.id, 1);
@@ -47,21 +51,24 @@ export const createTransfer = async (req: Request, res: Response) => {
         );
       }
     } else {*/
-      try {
-        await notificationRepository.createForAll({
-          type: "TRANSFER",
-          title: "Nueva transferencia solicitada",
-          body: `Transferencia ${data?.transferCode} solicitada`,
-          transferId: data.id,
-          fromLocationId: data.fromLocationId ?? undefined,
-          toLocationId: data.toLocationId ?? undefined,
-        });
-      } catch (notifError) {
-        console.error(
-          "❌ Error al crear notificación de transferencia:",
-          notifError,
-        );
-      }
+    requestedTransferNotification(data.id).catch((err) =>
+      console.error("Error enviando correos:", err),
+    );
+    try {
+      await notificationRepository.createForAll({
+        type: "TRANSFER",
+        title: "Nueva transferencia solicitada",
+        body: `Transferencia ${data?.transferCode} solicitada`,
+        transferId: data.id,
+        fromLocationId: data.fromLocationId ?? undefined,
+        toLocationId: data.toLocationId ?? undefined,
+      });
+    } catch (notifError) {
+      console.error(
+        "❌ Error al crear notificación de transferencia:",
+        notifError,
+      );
+    }
     //}
 
     return res.json(dataAprobado ? dataAprobado : data);
@@ -89,7 +96,9 @@ export const approveTransfer = async (req: Request, res: Response) => {
     }
 
     const data = await approveTransferRepo(Number(id), user.id, fromLocationId);
-
+    approvedTransferNotification(Number(id)).catch((err) =>
+      console.error("Error enviando correos:", err),
+    );
     try {
       await notificationRepository.createForAll({
         type: "TRANSFER",
@@ -118,9 +127,11 @@ export const rejectTransfer = async (req: Request, res: Response) => {
     const user = jwt.verify(token, process.env.JWTSECRET!) as any;
 
     const { id } = req.params;
-
-    const data = await rejectTransferRepo(Number(id), user.id);
-
+    const { rejectionReason } = req.body;
+    const data = await rejectTransferRepo(Number(id), user.id, rejectionReason);
+    rejectedTransferNotification(Number(id)).catch((err) =>
+      console.error("Error enviando correos de rechazo:", err),
+    );
     try {
       await notificationRepository.createForAll({
         type: "TRANSFER",
@@ -143,10 +154,7 @@ export const rejectTransfer = async (req: Request, res: Response) => {
   }
 };
 
-export const updateTransfer = async (
-  req: Request,
-  res: Response,
-) => {
+export const updateTransfer = async (req: Request, res: Response) => {
   try {
     const token = req.headers["x-access-token"] as string;
 
@@ -154,12 +162,7 @@ export const updateTransfer = async (
 
     const { id } = req.params;
 
-    const {
-      destinationId,
-      items,
-      glosa,
-      editReason,
-    } = req.body;
+    const { destinationId, items, glosa, editReason } = req.body;
 
     if (!items?.length) {
       return res.status(400).json({
@@ -167,17 +170,14 @@ export const updateTransfer = async (
       });
     }
 
-    const data = await updateTransferRepo(
-      Number(id),
-      {
-        toLocationId: destinationId,
-        items,
-        glosa,  
-        editReason,
-        userId: user.id,
-      },
-    );
-
+    const data = await updateTransferRepo(Number(id), {
+      toLocationId: destinationId,
+      items,
+      glosa,
+      editReason,
+      userId: user.id,
+    });
+    editedTransferNotification(Number(id));
     return res.json(data);
   } catch (error: any) {
     return res.status(400).json({
