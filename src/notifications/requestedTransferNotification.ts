@@ -24,19 +24,30 @@ export const requestedTransferNotification = async (
     if (!transfer) return;
 
     const employees = await prisma.employee.findMany({
-      where: {
-        locationId: transfer.fromLocationId!,
-        isVisible: true,
-        email: {
-          not: null,
-        },
+  where: {
+    locationId: transfer.fromLocationId!,
+    isVisible: true,
+    email: {
+      not: null,
+    },
+    role: {
+      name: {
+        notIn: [
+          "Técnico en sistemas",
+          "Gerente General",
+          "Gerente Operaciones",
+          "Subgerente Tecnico",
+          "Auditor Interno",
+        ],
       },
-      select: {
-        name: true,
-        lastName: true,
-        email: true,
-      },
-    });
+    },
+  },
+  select: {
+    name: true,
+    lastName: true,
+    email: true,
+  },
+});
 
     const products = transfer.items.map((item) => ({
       code: item.product.code,

@@ -25,27 +25,39 @@ export const editedTransferNotification = async (
 
     console.log("Motivo:", transfer.editReason);
 
-    const employees = await prisma.employee.findMany({
-      where: {
-        isVisible: true,
-        email: {
-          not: null,
-        },
-        OR: [
-          {
-            locationId: transfer.fromLocationId!,
-          },
-          {
-            locationId: transfer.toLocationId!,
-          },
-        ],
+
+const employees = await prisma.employee.findMany({
+  where: {
+    isVisible: true,
+    email: {
+      not: null,
+    },
+    role: {
+      name: {
+        notIn: [
+  "Técnico en sistemas",
+  "Gerente General",
+  "Gerente Operaciones",
+  "Subgerente Tecnico",
+  "Auditor Interno",
+],
       },
-      select: {
-        name: true,
-        lastName: true,
-        email: true,
+    },
+    OR: [
+      {
+        locationId: transfer.fromLocationId!,
       },
-    });
+      {
+        locationId: transfer.toLocationId!,
+      },
+    ],
+  },
+  select: {
+    name: true,
+    lastName: true,
+    email: true,
+  },
+});
 
     const uniqueEmployees = [
       ...new Map(

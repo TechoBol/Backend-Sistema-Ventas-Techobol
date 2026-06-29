@@ -1,10 +1,8 @@
 import prisma from "../config/db";
 import { sendTransferNotification } from "../utils/sendTransferNotification";
 
-export const approvedTransferNotification = async (
-  transferId: number,
-) => { 
-  try { 
+export const approvedTransferNotification = async (transferId: number) => {
+  try {
     const transfer = await prisma.transfer.findUnique({
       where: {
         id: transferId,
@@ -29,6 +27,17 @@ export const approvedTransferNotification = async (
         isVisible: true,
         email: {
           not: null,
+        },
+        role: {
+          name: {
+            notIn: [
+              "Técnico en sistemas",
+              "Gerente General",
+              "Gerente Operaciones",
+              "Subgerente Tecnico",
+              "Auditor Interno",
+            ],
+          },
         },
       },
       select: {
@@ -62,9 +71,6 @@ export const approvedTransferNotification = async (
       ),
     );
   } catch (error) {
-    console.error(
-      "❌ Error en approvedTransferNotification:",
-      error,
-    );
+    console.error("❌ Error en approvedTransferNotification:", error);
   }
 };

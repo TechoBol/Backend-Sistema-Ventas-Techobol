@@ -25,6 +25,17 @@ export const notifyMultiBranchSale = async (saleId: number) => {
                   email: {
                     not: null,
                   },
+                  role: {
+                    name: {
+                      notIn: [
+                        "Técnico en sistemas",
+                        "Gerente General",
+                        "Gerente Operaciones",
+                        "Subgerente Tecnico",
+                        "Auditor Interno",
+                      ],
+                    },
+                  },
                 },
               },
             },
