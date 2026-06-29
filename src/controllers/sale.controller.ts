@@ -16,6 +16,7 @@ import {
 
 import jwt from "jsonwebtoken";
 import { notificationRepository } from "../repository/notification.repository";
+import { notifyMultiBranchSale } from "../notifications/saleMultiBranchNotification";
 
 // =====================================================
 // 🔥 CREATE SALE
@@ -344,7 +345,6 @@ export const createSale = async (req: Request, res: Response) => {
 
         const location = await incrementLocationCounterRepo(tx, locationId);
 
-
         const saleNumber = location.saleCounter;
         const code = `${location.abbreviation}-${saleNumber}`;
 
@@ -468,7 +468,7 @@ export const createSale = async (req: Request, res: Response) => {
       { timeout: 15000 },
     );
     console.log("notificacion");
-
+    notifyMultiBranchSale(sale.id).catch(console.error);
     try {
       await notificationRepository.createForAll({
         type: "SALE",

@@ -175,7 +175,7 @@ export const updateProductRepo = async (id: number, data: any) => {
       //////////////////////////////////////////////////////
       // INVENTARIO SUCURSAL
       //////////////////////////////////////////////////////
-
+      console.log(locationId, "locationId");
       const inventory = await tx.inventory.findUnique({
         where: {
           productId_locationId: {
